@@ -11,7 +11,7 @@ constexpr char STA_PASSWORD[] = "";
 
 constexpr RelayConfig RELAY_CONFIG[RELAY_COUNT] = {
     {26, "Relay A", 60.0f},
-    {27, "Relay B", 60.0f},
+    {27, "Relay B", 100.0f},
 };
 
 constexpr PirConfig PIR_CONFIG[PIR_COUNT] = {

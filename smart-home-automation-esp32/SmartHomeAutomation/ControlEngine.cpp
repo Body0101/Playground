@@ -40,8 +40,18 @@ void ControlEngine::setEventCallback(EventCallback callback) { eventCallback_ = 
 void ControlEngine::tickFast() {
   withLock([&]() {
     const uint64_t nowEpoch = nowEpochLocked();
+    const DayPhase previousPhase = runtime_->dayPhase;
+    const bool previousNightLock = runtime_->nightLockActive;
     runtime_->dayPhase = timeKeeper_->currentDayPhase();
     runtime_->timeValid = timeKeeper_->hasValidTime();
+
+    // Forced Night Lock:
+    // - Active only when time is valid and current phase is NIGHT.
+    // - On transition, force all relays OFF and cancel active timers.
+    const bool shouldNightLock = runtime_->timeValid && runtime_->dayPhase == DayPhase::NIGHT;
+    if (shouldNightLock != previousNightLock || runtime_->dayPhase != previousPhase) {
+      applyNightLockTransitionLocked(shouldNightLock, nowEpoch);
+    }
 
     processPirInputsLocked(nowEpoch);
 
@@ -99,6 +109,8 @@ bool ControlEngine::setManualMode(size_t relayIndex, RelayMode mode, String *err
 
   bool accepted = false;
   withLock([&]() {
+    const uint64_t nowEpoch = nowEpochLocked();
+
     // Manual control is valid only while at least one web client is connected.
     if (runtime_->connectedClients == 0) {
       if (error) *error = "Manual control requires an active web client.";
@@ -107,6 +119,17 @@ bool ControlEngine::setManualMode(size_t relayIndex, RelayMode mode, String *err
     }
 
     RelayRuntime &relay = runtime_->relays[relayIndex];
+
+    // Manual ON is blocked while Night Lock is active.
+    if (runtime_->nightLockActive && mode == RelayMode::ON) {
+      if (error) *error = "Night Lock Active";
+      publishEventLocked("ERROR",
+                         "manual.blocked_night_lock",
+                         "Command Blocked by Night Lock",
+                         static_cast<int>(relayIndex),
+                         true);
+      return;
+    }
 
     // Night mode overrides conflicting manual ON requests.
     if (mode == RelayMode::ON && !canTurnOnLocked()) {
@@ -117,6 +140,7 @@ bool ControlEngine::setManualMode(size_t relayIndex, RelayMode mode, String *err
 
     // Manual ON/OFF should immediately override any running timer.
     if (mode != RelayMode::AUTO && relay.timer.active) {
+      finalizeEnergyTrackingLocked(relayIndex, relay, nowEpoch, "timer.canceled");
       relay.timer.active = false;
       relay.timer.endEpoch = 0;
       relay.timer.targetState = RelayState::OFF;
@@ -165,6 +189,16 @@ bool ControlEngine::setTimer(size_t relayIndex, uint32_t durationMinutes, RelayS
       return;
     }
 
+    if (runtime_->nightLockActive && targetState == RelayState::ON) {
+      if (error) *error = "Night Lock Active";
+      publishEventLocked("ERROR",
+                         "timer.blocked_night_lock",
+                         "Command Blocked by Night Lock",
+                         static_cast<int>(relayIndex),
+                         true);
+      return;
+    }
+
     // Per requirements: timer can only be created while relay is in manual ON/OFF mode.
     if (relay.manualMode == RelayMode::AUTO) {
       if (error) *error = "Set relay to manual ON/OFF before starting a timer.";
@@ -187,6 +221,16 @@ bool ControlEngine::setTimer(size_t relayIndex, uint32_t durationMinutes, RelayS
     plan.restorePending = false;
     plan.endEpoch = nowEpoch + static_cast<uint64_t>(durationMinutes) * 60ULL;
     relay.timer = plan;
+
+    // Energy tracking uses a lightweight arm/start approach:
+    // - Arm timestamp when ON timer is created.
+    // - Activate only when relay is actually ON via TIMER source.
+    if (runtime_->energyTrackingEnabled && targetState == RelayState::ON) {
+      relay.energyStartEpoch = nowEpoch;
+      relay.energyTrackingActive = false;
+    } else {
+      clearEnergyTrackingLocked(relay);
+    }
 
     // Allow timer logic to control output while it is active.
     relay.manualMode = RelayMode::AUTO;
@@ -219,10 +263,12 @@ bool ControlEngine::cancelTimer(size_t relayIndex) {
   }
   bool canceled = false;
   withLock([&]() {
+    const uint64_t nowEpoch = nowEpochLocked();
     RelayRuntime &relay = runtime_->relays[relayIndex];
     if (!relay.timer.active && !relay.timer.restorePending) {
       return;
     }
+    finalizeEnergyTrackingLocked(relayIndex, relay, nowEpoch, "timer.canceled");
     relay.timer.active = false;
     relay.timer.endEpoch = 0;
     relay.timer.durationMinutes = 0;
@@ -242,6 +288,29 @@ void ControlEngine::setInterlock(bool enabled) {
     publishEventLocked("TIMER",
                        "interlock.changed",
                        String("Interlock ") + (enabled ? "enabled." : "disabled."),
+                       -1,
+                       true);
+  });
+}
+
+void ControlEngine::setEnergyTrackingEnabled(bool enabled) {
+  withLock([&]() {
+    if (runtime_->energyTrackingEnabled == enabled) {
+      return;
+    }
+    runtime_->energyTrackingEnabled = enabled;
+    storage_->persistEnergyTrackingEnabled(enabled);
+
+    if (!enabled) {
+      // Drop in-flight tracking windows when user disables feature.
+      for (size_t i = 0; i < RELAY_COUNT; ++i) {
+        clearEnergyTrackingLocked(runtime_->relays[i]);
+      }
+    }
+
+    publishEventLocked("TIMER",
+                       "energy_tracking.changed",
+                       String("Energy tracking ") + (enabled ? "enabled." : "disabled."),
                        -1,
                        true);
   });
@@ -291,12 +360,13 @@ String ControlEngine::buildStateJson() const {
     doc["connectedClients"] = runtime_->connectedClients;
     doc["systemMode"] = runtime_->connectedClients > 0 ? "MANUAL_WEB" : "AUTO_PIR";
     doc["interlock"] = runtime_->interlockEnabled;
+    doc["energyTrackingEnabled"] = runtime_->energyTrackingEnabled;
+    doc["nightLock"] = runtime_->nightLockActive;
     JsonArray relays = doc.createNestedArray("relays");
     for (size_t i = 0; i < RELAY_COUNT; ++i) {
       JsonObject relay = relays.createNestedObject();
       const RelayRuntime &r = runtime_->relays[i];
       const uint64_t onSeconds = effectiveOnSecondsLocked(r, nowEpoch);
-      const float powerWh = (RELAY_CONFIG[i].ratedPowerWatts * static_cast<float>(onSeconds)) / 3600.0f;
       relay["index"] = i;
       relay["name"] = RELAY_CONFIG[i].name;
       relay["state"] = relayStateToText(r.appliedState);
@@ -309,8 +379,10 @@ String ControlEngine::buildStateJson() const {
       relay["autoHoldUntil"] = r.autoHoldUntilEpoch;
       relay["timerUses"] = r.stats.timerUses;
       relay["totalTimerMinutes"] = r.stats.totalTimerMinutes;
+      relay["lastEnergyWh"] = r.stats.lastEnergyWh;
+      relay["totalEnergyWh"] = r.stats.totalEnergyWh;
       relay["onSeconds"] = onSeconds;
-      relay["powerWh"] = powerWh;
+      relay["powerWh"] = runtime_->energyTrackingEnabled ? r.stats.totalEnergyWh : 0.0f;
       relay["powerW"] = RELAY_CONFIG[i].ratedPowerWatts;
     }
     JsonArray pirs = doc.createNestedArray("pirs");
@@ -355,6 +427,9 @@ uint64_t ControlEngine::nowEpochLocked() const {
 }
 
 bool ControlEngine::canTurnOnLocked() const {
+  if (runtime_->nightLockActive) {
+    return false;
+  }
   if (!timeKeeper_->hasValidTime()) {
     return true;
   }
@@ -386,6 +461,9 @@ void ControlEngine::processPirInputsLocked(uint64_t nowEpoch) {
     if (!pirAllowed) {
       continue;
     }
+    if (runtime_->nightLockActive) {
+      continue;
+    }
     if (!canTurnOnLocked()) {
       publishEventLocked("ERROR", "pir.blocked", "Motion ignored by night mode.", static_cast<int>(i), true);
       continue;
@@ -411,6 +489,7 @@ ControlEngine::Decision ControlEngine::evaluateRelayLocked(size_t relayIndex, ui
   RelayRuntime &relay = runtime_->relays[relayIndex];
 
   if (relay.timer.active && nowEpoch >= relay.timer.endEpoch) {
+    finalizeEnergyTrackingLocked(relayIndex, relay, nowEpoch, "timer.ended");
     relay.timer.active = false;
     relay.timer.endEpoch = 0;
     relay.timer.targetState = RelayState::OFF;
@@ -462,6 +541,12 @@ ControlEngine::Decision ControlEngine::evaluateRelayLocked(size_t relayIndex, ui
       out.source = ControlSource::NONE;
     }
   }
+
+  // Final safety net: Night Lock forcibly blocks every ON decision source.
+  if (runtime_->nightLockActive && out.state == RelayState::ON) {
+    out.state = RelayState::OFF;
+    out.source = ControlSource::NONE;
+  }
   return out;
 }
 
@@ -509,6 +594,7 @@ void ControlEngine::applyDecisionsLocked(const Decision decisions[RELAY_COUNT], 
       if (relay.appliedState == RelayState::ON && relay.stats.lastOnEpoch == 0) {
         relay.stats.lastOnEpoch = nowEpoch;
       }
+      markEnergyTrackingStartLocked(i, relay, nowEpoch);
       continue;
     }
 
@@ -522,6 +608,8 @@ void ControlEngine::applyDecisionsLocked(const Decision decisions[RELAY_COUNT], 
     digitalWrite(RELAY_CONFIG[i].relayPin, relay.appliedState == RelayState::ON ? HIGH : LOW);
     storage_->persistRelayState(i, relay.appliedState, relay.appliedSource);
     storage_->persistRelayStats(i, relay.stats);
+
+    markEnergyTrackingStartLocked(i, relay, nowEpoch);
 
     publishEventLocked(relay.appliedState == RelayState::ON ? "ON" : "OFF",
                        "relay.changed",
@@ -551,6 +639,124 @@ void ControlEngine::publishEventLocked(const String &logType,
   String line;
   serializeJson(doc, line);
   eventCallback_(line, bufferIfOffline);
+}
+
+void ControlEngine::applyNightLockTransitionLocked(bool activate, uint64_t nowEpoch) {
+  if (runtime_->nightLockActive == activate) {
+    return;
+  }
+
+  runtime_->nightLockActive = activate;
+  if (!activate) {
+    publishEventLocked("TIMER", "night_lock.released", "Night Lock Released", -1, true);
+    return;
+  }
+
+  publishEventLocked("TIMER", "night_lock.activated", "Night Lock Activated", -1, true);
+
+  // Night entry behavior: force all relays OFF and cancel all active timers.
+  for (size_t i = 0; i < RELAY_COUNT; ++i) {
+    RelayRuntime &relay = runtime_->relays[i];
+
+    if (relay.timer.active || relay.timer.restorePending) {
+      finalizeEnergyTrackingLocked(i, relay, nowEpoch, "timer.canceled");
+      relay.timer.active = false;
+      relay.timer.endEpoch = 0;
+      relay.timer.targetState = RelayState::OFF;
+      relay.timer.durationMinutes = 0;
+      relay.timer.restorePending = false;
+      storage_->persistTimer(i, relay.timer);
+      publishEventLocked("TIMER", "timer.canceled", "Timer canceled by Night Lock", static_cast<int>(i), true);
+    }
+    clearEnergyTrackingLocked(relay);
+
+    if (relay.appliedState == RelayState::ON) {
+      closeActiveOnWindowLocked(relay, nowEpoch);
+    }
+    relay.appliedState = RelayState::OFF;
+    relay.appliedSource = ControlSource::NONE;
+    digitalWrite(RELAY_CONFIG[i].relayPin, LOW);
+    storage_->persistRelayState(i, relay.appliedState, relay.appliedSource);
+    storage_->persistRelayStats(i, relay.stats);
+
+    publishEventLocked("OFF",
+                       "relay.night_forced_off",
+                       String(RELAY_CONFIG[i].name) + " forced OFF by Night Lock.",
+                       static_cast<int>(i),
+                       true);
+  }
+}
+
+void ControlEngine::markEnergyTrackingStartLocked(size_t relayIndex, RelayRuntime &relay, uint64_t nowEpoch) {
+  if (!runtime_->energyTrackingEnabled) {
+    return;
+  }
+  if (!relay.timer.active || relay.timer.targetState != RelayState::ON) {
+    return;
+  }
+  if (relay.appliedState != RelayState::ON || relay.appliedSource != ControlSource::TIMER) {
+    return;
+  }
+  if (relay.energyTrackingActive) {
+    return;
+  }
+  if (relay.energyStartEpoch == 0) {
+    relay.energyStartEpoch = nowEpoch;
+  }
+  relay.energyTrackingActive = true;
+}
+
+void ControlEngine::finalizeEnergyTrackingLocked(size_t relayIndex,
+                                                 RelayRuntime &relay,
+                                                 uint64_t nowEpoch,
+                                                 const String &stopEvent) {
+  if (!runtime_->energyTrackingEnabled) {
+    clearEnergyTrackingLocked(relay);
+    return;
+  }
+  if (!relay.energyTrackingActive || relay.energyStartEpoch == 0 || nowEpoch <= relay.energyStartEpoch) {
+    clearEnergyTrackingLocked(relay);
+    return;
+  }
+
+  // Lightweight energy math: Wh = Power(W) * duration(hours)
+  const uint64_t energyEndEpoch = nowEpoch;
+  const float durationHours = static_cast<float>(energyEndEpoch - relay.energyStartEpoch) / 3600.0f;
+  const float lastWh = RELAY_CONFIG[relayIndex].ratedPowerWatts * durationHours;
+  relay.stats.lastEnergyWh = lastWh;
+  relay.stats.totalEnergyWh += lastWh;
+  storage_->persistRelayEnergyStats(relayIndex, relay.stats.totalEnergyWh, relay.stats.lastEnergyWh);
+
+  publishEnergyUpdateLocked(relayIndex, relay.stats.lastEnergyWh, relay.stats.totalEnergyWh);
+  publishEventLocked("TIMER",
+                     "energy.calculated",
+                     String(RELAY_CONFIG[relayIndex].name) + " energy computed after " + stopEvent + ".",
+                     static_cast<int>(relayIndex),
+                     true);
+  clearEnergyTrackingLocked(relay);
+}
+
+void ControlEngine::clearEnergyTrackingLocked(RelayRuntime &relay) {
+  relay.energyTrackingActive = false;
+  relay.energyStartEpoch = 0;
+}
+
+void ControlEngine::publishEnergyUpdateLocked(size_t relayIndex, float lastWh, float totalWh) const {
+  if (!eventCallback_) {
+    return;
+  }
+  DynamicJsonDocument doc(352);
+  doc["type"] = "TIMER";
+  doc["event"] = "energy_update";
+  doc["msg"] = String("Energy updated for ") + RELAY_CONFIG[relayIndex].name + ".";
+  doc["ts"] = nowEpochLocked();
+  doc["relay"] = relayIndex;
+  doc["channel"] = relayIndex;
+  doc["lastWh"] = lastWh;
+  doc["totalWh"] = totalWh;
+  String line;
+  serializeJson(doc, line);
+  eventCallback_(line, true);
 }
 
 uint64_t ControlEngine::effectiveOnSecondsLocked(const RelayRuntime &relay, uint64_t nowEpoch) const {

@@ -17,7 +17,9 @@ class StorageLayer {
   void persistRelayState(size_t relayIndex, RelayState state, ControlSource source);
   void persistTimer(size_t relayIndex, const TimerPlan &plan);
   void persistRelayStats(size_t relayIndex, const RelayStats &stats);
+  void persistRelayEnergyStats(size_t relayIndex, float totalEnergyWh, float lastEnergyWh);
   void persistInterlock(bool enabled);
+  void persistEnergyTrackingEnabled(bool enabled);
   void persistLastCleanupDay(uint32_t dayToken);
   uint32_t loadLastCleanupDay() const;
 

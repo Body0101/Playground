@@ -41,6 +41,7 @@ void StorageLayer::loadRuntime(SystemRuntime *runtime) {
     return;
   }
   runtime->interlockEnabled = preferences_.getBool("interlock", false);
+  runtime->energyTrackingEnabled = preferences_.getBool("energy_en", false);
   for (size_t i = 0; i < RELAY_COUNT; ++i) {
     uint8_t mode = preferences_.getUChar(keyFor("m", i).c_str(), static_cast<uint8_t>(RelayMode::AUTO));
     uint8_t state = preferences_.getUChar(keyFor("rs", i).c_str(), static_cast<uint8_t>(RelayState::OFF));
@@ -79,10 +80,14 @@ void StorageLayer::loadRuntime(SystemRuntime *runtime) {
     runtime->relays[i].timer.durationMinutes = preferences_.getUInt(keyFor("tdm", i).c_str(), 0);
     runtime->relays[i].timer.restorePending = preferences_.getBool(keyFor("trp", i).c_str(), false);
     runtime->relays[i].autoHoldUntilEpoch = preferences_.getULong64(keyFor("ah", i).c_str(), 0);
+    runtime->relays[i].energyTrackingActive = false;
+    runtime->relays[i].energyStartEpoch = 0;
     runtime->relays[i].stats.timerUses = preferences_.getUInt(keyFor("tu", i).c_str(), 0);
     runtime->relays[i].stats.totalTimerMinutes = preferences_.getUInt(keyFor("tm", i).c_str(), 0);
     runtime->relays[i].stats.accumulatedOnSeconds = preferences_.getULong64(keyFor("os", i).c_str(), 0);
     runtime->relays[i].stats.lastOnEpoch = preferences_.getULong64(keyFor("lo", i).c_str(), 0);
+    runtime->relays[i].stats.totalEnergyWh = preferences_.getFloat(keyFor("ewt", i).c_str(), 0.0f);
+    runtime->relays[i].stats.lastEnergyWh = preferences_.getFloat(keyFor("ewl", i).c_str(), 0.0f);
   }
   unlock();
 }
@@ -129,11 +134,28 @@ void StorageLayer::persistRelayStats(size_t relayIndex, const RelayStats &stats)
   unlock();
 }
 
+void StorageLayer::persistRelayEnergyStats(size_t relayIndex, float totalEnergyWh, float lastEnergyWh) {
+  if (!lock()) {
+    return;
+  }
+  preferences_.putFloat(keyFor("ewt", relayIndex).c_str(), totalEnergyWh);
+  preferences_.putFloat(keyFor("ewl", relayIndex).c_str(), lastEnergyWh);
+  unlock();
+}
+
 void StorageLayer::persistInterlock(bool enabled) {
   if (!lock()) {
     return;
   }
   preferences_.putBool("interlock", enabled);
+  unlock();
+}
+
+void StorageLayer::persistEnergyTrackingEnabled(bool enabled) {
+  if (!lock()) {
+    return;
+  }
+  preferences_.putBool("energy_en", enabled);
   unlock();
 }
 

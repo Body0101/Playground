@@ -23,7 +23,9 @@ bool eventNeedsSnapshot(const String &jsonLine) {
   }
   const String event = doc["event"] | "";
   return event == "relay.changed" || event == "timer.started" || event == "timer.ended" || event == "timer.canceled" ||
-         event == "manual.changed" || event == "interlock.changed" || event == "mode.changed";
+         event == "manual.changed" || event == "interlock.changed" || event == "mode.changed" ||
+         event == "night_lock.activated" || event == "night_lock.released" || event == "relay.night_forced_off" ||
+         event == "energy_update" || event == "energy_tracking.changed";
 }
 }  // namespace
 
@@ -260,6 +262,16 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
     const RelayMode mode = relayModeFromText(doc["mode"] | "AUTO");
     String errorText;
     const bool ok = engine_->setManualMode(channel, mode, &errorText);
+    if (!ok && errorText == "Night Lock Active") {
+      // Explicit reject payload requested by frontend for ON commands during night lock.
+      DynamicJsonDocument errDoc(128);
+      errDoc["error"] = "Night Lock Active";
+      String errPayload;
+      serializeJson(errDoc, errPayload);
+      sendToClient(clientId, errPayload);
+      pushStateSnapshot(clientId);
+      return;
+    }
     sendCommandAck(clientId, ok, ok ? "Manual mode updated." : errorText);
     if (ok) {
       broadcast(engine_->buildStateJson());
@@ -277,6 +289,16 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
     const RelayState target = relayStateFromText(doc["target"] | "OFF");
     String errorText;
     const bool ok = engine_->setTimer(channel, durationMinutes, target, &errorText);
+    if (!ok && errorText == "Night Lock Active") {
+      // Explicit reject payload requested by frontend for ON timer targets during night lock.
+      DynamicJsonDocument errDoc(128);
+      errDoc["error"] = "Night Lock Active";
+      String errPayload;
+      serializeJson(errDoc, errPayload);
+      sendToClient(clientId, errPayload);
+      pushStateSnapshot(clientId);
+      return;
+    }
     sendCommandAck(clientId, ok, ok ? "Timer saved." : errorText);
     if (ok) {
       broadcast(engine_->buildStateJson());
@@ -298,6 +320,14 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
     const bool enabled = doc["enabled"] | false;
     engine_->setInterlock(enabled);
     sendCommandAck(clientId, true, "Interlock updated.");
+    broadcast(engine_->buildStateJson());
+    return;
+  }
+
+  if (type == "set_energy_tracking") {
+    const bool enabled = doc["enabled"] | false;
+    engine_->setEnergyTrackingEnabled(enabled);
+    sendCommandAck(clientId, true, String("Energy tracking ") + (enabled ? "enabled." : "disabled."));
     broadcast(engine_->buildStateJson());
     return;
   }
@@ -409,6 +439,12 @@ String WebPortal::normalizeLogPayload(const String &rawJson, const String &fallb
   }
   if (relay >= 0) {
     out["channel"] = relay;   // keep backward compatibility with existing consumers
+  }
+  if (in["lastWh"].is<float>() || in["lastWh"].is<double>()) {
+    out["lastWh"] = in["lastWh"].as<float>();
+  }
+  if (in["totalWh"].is<float>() || in["totalWh"].is<double>()) {
+    out["totalWh"] = in["totalWh"].as<float>();
   }
 
   String payload;

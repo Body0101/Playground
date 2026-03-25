@@ -39,8 +39,10 @@ void pushSystemEvent(const String &eventName, const String &message, bool buffer
 void initRuntimeDefaults() {
   memset(&gRuntime, 0, sizeof(gRuntime));
   gRuntime.interlockEnabled = false;
+  gRuntime.energyTrackingEnabled = false;
   gRuntime.dayPhase = DayPhase::DAY;
   gRuntime.timeValid = false;
+  gRuntime.nightLockActive = false;
 
   for (size_t i = 0; i < RELAY_COUNT; ++i) {
     gRuntime.relays[i].manualMode = RelayMode::AUTO;
@@ -54,10 +56,14 @@ void initRuntimeDefaults() {
     gRuntime.relays[i].timer.durationMinutes = 0;
     gRuntime.relays[i].timer.restorePending = false;
     gRuntime.relays[i].autoHoldUntilEpoch = 0;
+    gRuntime.relays[i].energyTrackingActive = false;
+    gRuntime.relays[i].energyStartEpoch = 0;
     gRuntime.relays[i].stats.timerUses = 0;
     gRuntime.relays[i].stats.totalTimerMinutes = 0;
     gRuntime.relays[i].stats.accumulatedOnSeconds = 0;
     gRuntime.relays[i].stats.lastOnEpoch = 0;
+    gRuntime.relays[i].stats.totalEnergyWh = 0.0f;
+    gRuntime.relays[i].stats.lastEnergyWh = 0.0f;
   }
 
   for (size_t i = 0; i < PIR_COUNT; ++i) {

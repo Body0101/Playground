@@ -22,6 +22,7 @@ class ControlEngine {
   bool setTimer(size_t relayIndex, uint32_t durationMinutes, RelayState targetState, String *error);
   bool cancelTimer(size_t relayIndex);
   void setInterlock(bool enabled);
+  void setEnergyTrackingEnabled(bool enabled);
   void updateConnectedClients(uint16_t clients);
 
   String buildStateJson() const;
@@ -38,6 +39,11 @@ class ControlEngine {
                           const String &msg,
                           int channel,
                           bool bufferIfOffline) const;
+  void applyNightLockTransitionLocked(bool activate, uint64_t nowEpoch);
+  void markEnergyTrackingStartLocked(size_t relayIndex, RelayRuntime &relay, uint64_t nowEpoch);
+  void finalizeEnergyTrackingLocked(size_t relayIndex, RelayRuntime &relay, uint64_t nowEpoch, const String &stopEvent);
+  void clearEnergyTrackingLocked(RelayRuntime &relay);
+  void publishEnergyUpdateLocked(size_t relayIndex, float lastWh, float totalWh) const;
   uint64_t nowEpochLocked() const;
   bool canTurnOnLocked() const;
   void processPirInputsLocked(uint64_t nowEpoch);

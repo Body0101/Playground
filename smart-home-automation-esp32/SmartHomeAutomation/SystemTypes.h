@@ -37,6 +37,8 @@ struct RelayStats {
   uint32_t totalTimerMinutes;
   uint64_t accumulatedOnSeconds;
   uint64_t lastOnEpoch;
+  float totalEnergyWh;
+  float lastEnergyWh;
 };
 
 struct RelayRuntime {
@@ -45,6 +47,8 @@ struct RelayRuntime {
   ControlSource appliedSource;
   TimerPlan timer;
   uint64_t autoHoldUntilEpoch;
+  bool energyTrackingActive;
+  uint64_t energyStartEpoch;
   RelayStats stats;
 };
 
@@ -59,7 +63,9 @@ struct SystemRuntime {
   RelayRuntime relays[RELAY_COUNT];
   PirRuntime pirs[PIR_COUNT];
   bool interlockEnabled;
+  bool energyTrackingEnabled;
   uint16_t connectedClients;
   DayPhase dayPhase;
   bool timeValid;
+  bool nightLockActive;
 };
