@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 Smart Home Relay</title>
+  <style>
+    :root {
+      --bg-1: #f6f1e9;
+      --bg-2: #dce7f2;
+      --panel: #ffffffd8;
+      --text: #1c2b37;
+      --muted: #5e6c77;
+      --border: #7f94a733;
+      --ok: #0f8a50;
+      --off: #6b7885;
+      --timer: #206da2;
+      --error: #a53434;
+      --accent: #1f6b6e;
+      --accent-soft: #d9edec;
+      --warn-soft: #fde8d7;
+      --shadow: 0 14px 30px rgba(29, 47, 68, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Candara", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 10%, #ffffff 0%, transparent 42%),
+        radial-gradient(circle at 88% 12%, #d8f2f6 0%, transparent 45%),
+        linear-gradient(145deg, var(--bg-1), var(--bg-2));
+      padding: 16px;
+    }
+
+    .app {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.32rem;
+      letter-spacing: 0.03em;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      border-radius: 999px;
+      font-size: 0.78rem;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      background: #eff3f7;
+      color: var(--muted);
+    }
+
+    .pill.good {
+      background: #dff5e8;
+      color: #10683d;
+      border-color: #b9e5cb;
+    }
+
+    .pill.warn {
+      background: #fff2e4;
+      color: #8e4f17;
+      border-color: #f7d6b9;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+
+    .relay-card {
+      grid-column: span 12;
+    }
+
+    .half {
+      grid-column: span 6;
+    }
+
+    .full {
+      grid-column: span 12;
+    }
+
+    .relay-row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px dashed #7f94a72a;
+    }
+
+    .relay-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 2px;
+    }
+
+    .relay-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .meta {
+      font-size: 0.84rem;
+      color: var(--muted);
+      line-height: 1.36;
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.82rem;
+      padding: 7px 11px;
+      color: #1a3649;
+      background: #eaf0f6;
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(0.98);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.warn {
+      background: var(--warn-soft);
+      color: #864217;
+    }
+
+    .field {
+      display: grid;
+      gap: 4px;
+      font-size: 0.83rem;
+      color: var(--muted);
+    }
+
+    input, select {
+      border-radius: 10px;
+      border: 1px solid #b6c4d0;
+      padding: 8px 9px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+      width: 100%;
+    }
+
+    .settings-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle input {
+      width: auto;
+      transform: scale(1.15);
+    }
+
+    .power-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 7px;
+    }
+
+    .power-item {
+      border-radius: 10px;
+      border: 1px solid #b7c8d855;
+      background: #f8fbff;
+      padding: 9px;
+      font-size: 0.85rem;
+    }
+
+    .log-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 7px;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .log-item {
+      border-left: 4px solid #c6ced8;
+      border-radius: 8px;
+      background: #f6f9fc;
+      padding: 7px 9px;
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .log-item.ON {
+      border-left-color: var(--ok);
+    }
+
+    .log-item.OFF {
+      border-left-color: var(--off);
+    }
+
+    .log-item.TIMER {
+      border-left-color: var(--timer);
+    }
+
+    .log-item.ERROR {
+      border-left-color: var(--error);
+      background: #fff2f2;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      opacity: 0;
+      pointer-events: none;
+      border-radius: 10px;
+      background: #1f3242;
+      color: #fff;
+      padding: 9px 12px;
+      font-size: 0.82rem;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translate(-50%, -3px);
+    }
+
+    @media (max-width: 920px) {
+      .half {
+        grid-column: span 12;
+      }
+      .actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="panel header">
+      <h1>ESP32 Smart Home Relay</h1>
+      <div class="status-row">
+        <span id="wsStatus" class="pill warn">WebSocket: Offline</span>
+        <span id="modeStatus" class="pill">Mode: --</span>
+        <span id="dayNightStatus" class="pill">Day/Night: --</span>
+        <span id="clientsStatus" class="pill">Clients: 0</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel relay-card">
+        <h2>Relay Control</h2>
+        <div id="relayContainer"></div>
+      </article>
+
+      <article class="panel half">
+        <h2>Timer Settings</h2>
+        <div class="settings-grid">
+          <label class="field">
+            Relay Channel
+            <select id="timerChannel">
+              <option value="0">Relay A</option>
+              <option value="1">Relay B</option>
+            </select>
+          </label>
+          <label class="field">
+            Duration (minutes)
+            <input id="timerMinutes" type="number" min="1" step="1" value="5">
+          </label>
+          <label class="field">
+            Target State
+            <select id="timerTarget">
+              <option value="ON">ON</option>
+              <option value="OFF">OFF</option>
+            </select>
+          </label>
+          <div class="actions">
+            <button id="startTimerBtn" class="primary">Start Timer</button>
+            <button id="cancelTimerBtn">Cancel Timer</button>
+          </div>
+          <div class="meta">
+            Timer can start only when selected relay is in manual ON or manual OFF mode.
+            Firmware stores target end time to reduce flash wear.
+          </div>
+        </div>
+      </article>
+
+      <article class="panel half">
+        <h2>Day/Night + Interlock</h2>
+        <div class="settings-grid">
+          <div id="dayNightText" class="meta">Day mode: 06:00-18:00 | Night mode: 18:00-06:00</div>
+          <label class="toggle">
+            <input id="interlockToggle" type="checkbox">
+            Enable interlock (only one relay ON at a time)
+          </label>
+          <div class="actions">
+            <button id="refreshBtn">Refresh State</button>
+            <button id="syncTimeBtn">Sync Time Now</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel half">
+        <h2>Power Consumption</h2>
+        <ul id="powerList" class="power-list"></ul>
+      </article>
+
+      <article class="panel half">
+        <h2>Timer Statistics</h2>
+        <ul id="statsList" class="power-list"></ul>
+      </article>
+
+      <article class="panel full">
+        <h2>Activity Log</h2>
+        <ul id="logList" class="log-list"></ul>
+      </article>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const LOG_TYPES = new Set(["ON", "OFF", "TIMER", "ERROR"]);
+    const SNAPSHOT_EVENTS = new Set(["relay.changed", "timer.started", "timer.ended", "timer.canceled", "manual.changed", "interlock.changed", "mode.changed"]);
+
+    const relayContainer = document.getElementById("relayContainer");
+    const powerList = document.getElementById("powerList");
+    const statsList = document.getElementById("statsList");
+    const logList = document.getElementById("logList");
+
+    const wsStatus = document.getElementById("wsStatus");
+    const modeStatus = document.getElementById("modeStatus");
+    const dayNightStatus = document.getElementById("dayNightStatus");
+    const clientsStatus = document.getElementById("clientsStatus");
+
+    const timerChannel = document.getElementById("timerChannel");
+    const timerMinutes = document.getElementById("timerMinutes");
+    const timerTarget = document.getElementById("timerTarget");
+    const startTimerBtn = document.getElementById("startTimerBtn");
+    const cancelTimerBtn = document.getElementById("cancelTimerBtn");
+    const interlockToggle = document.getElementById("interlockToggle");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const syncTimeBtn = document.getElementById("syncTimeBtn");
+    const toast = document.getElementById("toast");
+
+    let socket = null;
+    let socketReady = false;
+    let state = null;
+    let reconnectHandle = null;
+    let serverTimeOffsetSec = 0;
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => toast.classList.remove("show"), 2300);
+    }
+
+    function nowEpoch() {
+      return Math.floor(Date.now() / 1000 + serverTimeOffsetSec);
+    }
+
+    function formatTimestamp(epoch) {
+      if (!epoch) return "--";
+      return new Date(epoch * 1000).toLocaleString();
+    }
+
+    function formatMinutesSeconds(totalSec) {
+      if (totalSec <= 0) return "0m 0s";
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      return `${min}m ${sec}s`;
+    }
+
+    function timerRemainingText(relay) {
+      if (!relay.timerActive || !relay.timerEnd) return "No active timer";
+      const rem = relay.timerEnd - nowEpoch();
+      if (rem <= 0) return "Timer ending...";
+      return `Remaining ${formatMinutesSeconds(rem)}`;
+    }
+
+    function relayBadge(stateText) {
+      const cls = stateText === "ON" ? "good" : "";
+      return `<span class="pill ${cls}">${stateText}</span>`;
+    }
+
+    function renderRelays() {
+      if (!state || !Array.isArray(state.relays)) return;
+      relayContainer.innerHTML = state.relays.map((relay) => `
+        <div class="relay-row">
+          <div>
+            <div class="relay-title">${relay.name} ${relayBadge(relay.state)}</div>
+            <div class="meta">Manual Mode: ${relay.manualMode} | Source: ${relay.source}</div>
+            <div class="meta">${timerRemainingText(relay)} | Timer Target: ${relay.timerTarget}</div>
+          </div>
+          <div class="actions">
+            <button class="primary" onclick="setManual(${relay.index}, 'ON')">Manual ON</button>
+            <button class="warn" onclick="setManual(${relay.index}, 'OFF')">Manual OFF</button>
+            <button onclick="setManual(${relay.index}, 'AUTO')">AUTO</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderPower() {
+      if (!state || !Array.isArray(state.relays)) return;
+      let totalWh = 0;
+      powerList.innerHTML = state.relays.map((relay) => {
+        const wh = Number(relay.powerWh || 0);
+        totalWh += wh;
+        return `
+          <li class="power-item">
+            <strong>${relay.name}</strong><br>
+            Rated: ${Number(relay.powerW || 0).toFixed(1)}W |
+            Runtime: ${formatMinutesSeconds(Number(relay.onSeconds || 0))} |
+            Energy: ${wh.toFixed(3)} Wh
+          </li>
+        `;
+      }).join("");
+      powerList.innerHTML += `<li class="power-item"><strong>Total Energy:</strong> ${totalWh.toFixed(3)} Wh</li>`;
+    }
+
+    function renderStats() {
+      if (!state || !Array.isArray(state.relays)) return;
+      statsList.innerHTML = state.relays.map((relay) => `
+        <li class="power-item">
+          <strong>${relay.name}</strong><br>
+          Timer Uses: ${relay.timerUses || 0}<br>
+          Total Timer Minutes: ${relay.totalTimerMinutes || 0}
+        </li>
+      `).join("");
+    }
+
+    function renderHeader() {
+      if (!state) return;
+      modeStatus.textContent = `Mode: ${state.systemMode || "--"}`;
+      dayNightStatus.textContent = `Day/Night: ${state.dayPhase || "--"}`;
+      clientsStatus.textContent = `Clients: ${state.connectedClients ?? 0}`;
+      interlockToggle.checked = !!state.interlock;
+    }
+
+    function renderState() {
+      renderHeader();
+      renderRelays();
+      renderPower();
+      renderStats();
+    }
+
+    function addLogEntry(entry, prepend = true) {
+      if (!entry) return;
+      const message = entry.message || entry.msg || "";
+      if (!message) return;
+      const li = document.createElement("li");
+      li.className = `log-item ${entry.type || ""}`;
+      const eventLabel = entry.event ? ` (${entry.event})` : "";
+      const relayText = Number.isInteger(entry.relay) && entry.relay >= 0 ? ` | relay:${entry.relay}` : "";
+      const macText = entry.mac ? ` | mac:${entry.mac}` : "";
+      const timeText = entry.time ? entry.time : formatTimestamp(entry.ts);
+      li.textContent = `[${timeText}] ${entry.type || "LOG"}${eventLabel}${relayText}${macText} - ${message}`;
+      if (prepend) {
+        logList.prepend(li);
+      } else {
+        logList.append(li);
+      }
+      while (logList.children.length > 180) {
+        logList.removeChild(logList.lastChild);
+      }
+    }
+
+    function sendWs(payload) {
+      if (!socketReady || !socket) {
+        showToast("WebSocket offline, reconnecting...");
+        return false;
+      }
+      socket.send(JSON.stringify(payload));
+      return true;
+    }
+
+    async function syncDeviceTime() {
+      const now = new Date();
+      const body = {
+        epoch: Math.floor(now.getTime() / 1000),
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        hours: now.getHours(),
+        minutes: now.getMinutes(),
+        seconds: now.getSeconds()
+      };
+      try {
+        const response = await fetch("/setTime", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (data && data.ok) {
+          showToast("Device time synchronized.");
+          if (typeof data.epoch === "number") {
+            serverTimeOffsetSec = data.epoch - Date.now() / 1000;
+          }
+        }
+      } catch {
+        showToast("Time sync request failed.");
+      }
+    }
+
+    async function loadInitialState() {
+      try {
+        const response = await fetch("/api/state");
+        state = await response.json();
+        renderState();
+      } catch {
+        showToast("State API not ready. Waiting for socket...");
+      }
+    }
+
+    async function loadInitialLogs() {
+      try {
+        const response = await fetch("/api/logs?limit=90");
+        const logs = await response.json();
+        if (Array.isArray(logs)) {
+          logs.forEach((entry) => addLogEntry(entry, false));
+        }
+      } catch {
+        addLogEntry({ type: "ERROR", event: "ui.logs", msg: "Could not load history logs.", ts: Math.floor(Date.now() / 1000) }, false);
+      }
+    }
+
+    function connectSocket() {
+      if (socket) socket.close();
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(`${protocol}://${location.hostname}:81/`);
+
+      socket.addEventListener("open", () => {
+        socketReady = true;
+        wsStatus.textContent = "WebSocket: Online";
+        wsStatus.className = "pill good";
+
+        const now = new Date();
+        sendWs({
+          type: "time_sync",
+          epoch: Math.floor(now.getTime() / 1000),
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          day: now.getDate(),
+          hours: now.getHours(),
+          minutes: now.getMinutes(),
+          seconds: now.getSeconds()
+        });
+        sendWs({ type: "get_state" });
+      });
+
+      socket.addEventListener("message", (event) => {
+        let msg = null;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (typeof msg.ts === "number") {
+          serverTimeOffsetSec = msg.ts - Date.now() / 1000;
+        }
+
+        if (msg.type === "state_snapshot") {
+          state = msg;
+          renderState();
+          return;
+        }
+
+        if (msg.type === "command_ack") {
+          showToast(msg.msg || (msg.ok ? "OK" : "Failed"));
+          if (msg.ok) sendWs({ type: "get_state" });
+          return;
+        }
+
+        if (msg.type === "time_request") {
+          syncDeviceTime();
+          return;
+        }
+
+        if (LOG_TYPES.has(msg.type)) {
+          addLogEntry(msg, true);
+          if (SNAPSHOT_EVENTS.has(msg.event)) {
+            sendWs({ type: "get_state" });
+          }
+        }
+      });
+
+      socket.addEventListener("close", () => {
+        socketReady = false;
+        wsStatus.textContent = "WebSocket: Offline";
+        wsStatus.className = "pill warn";
+        if (!reconnectHandle) {
+          reconnectHandle = setTimeout(() => {
+            reconnectHandle = null;
+            connectSocket();
+          }, 1800);
+        }
+      });
+    }
+
+    window.setManual = (channel, mode) => {
+      sendWs({ type: "set_manual", channel, mode });
+    };
+
+    startTimerBtn.addEventListener("click", () => {
+      const channel = Number(timerChannel.value);
+      const minutes = Number(timerMinutes.value);
+      const target = timerTarget.value;
+      if (!minutes || minutes < 1) {
+        showToast("Timer duration must be at least 1 minute.");
+        return;
+      }
+      sendWs({ type: "set_timer", channel, durationMinutes: minutes, target });
+    });
+
+    cancelTimerBtn.addEventListener("click", () => {
+      const channel = Number(timerChannel.value);
+      sendWs({ type: "cancel_timer", channel });
+    });
+
+    interlockToggle.addEventListener("change", () => {
+      sendWs({ type: "set_interlock", enabled: interlockToggle.checked });
+    });
+
+    refreshBtn.addEventListener("click", () => {
+      sendWs({ type: "get_state" });
+    });
+
+    syncTimeBtn.addEventListener("click", () => {
+      syncDeviceTime();
+      sendWs({ type: "get_state" });
+    });
+
+    // Required client time sync on first page load.
+    window.onload = async () => {
+      await syncDeviceTime();
+      await loadInitialLogs();
+      await loadInitialState();
+      connectSocket();
+      setInterval(renderState, 1000);
+    };
+  </script>
+</body>
+</html>
