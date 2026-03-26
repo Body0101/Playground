@@ -876,18 +876,25 @@
       return true;
     }
 
-    async function syncDeviceTime() {
-      setSyncStatus("Sync: In Progress...", "warn");
+    function buildDeviceTimePayload() {
       const now = new Date();
-      const body = {
+      return {
         epoch: Math.floor(now.getTime() / 1000),
         year: now.getFullYear(),
         month: now.getMonth() + 1,
         day: now.getDate(),
         hours: now.getHours(),
         minutes: now.getMinutes(),
-        seconds: now.getSeconds()
+        seconds: now.getSeconds(),
+        // Send the browser offset explicitly so the ESP32 can format logs/day-night
+        // using the same local clock view as the user device.
+        tzOffsetMinutes: now.getTimezoneOffset()
       };
+    }
+
+    async function syncDeviceTime() {
+      setSyncStatus("Sync: In Progress...", "warn");
+      const body = buildDeviceTimePayload();
 
       try {
         const response = await fetch("/setTime", {
@@ -1001,17 +1008,7 @@
         socketReady = true;
         setConnectionStatus(true);
 
-        const now = new Date();
-        sendWs({
-          type: "time_sync",
-          epoch: Math.floor(now.getTime() / 1000),
-          year: now.getFullYear(),
-          month: now.getMonth() + 1,
-          day: now.getDate(),
-          hours: now.getHours(),
-          minutes: now.getMinutes(),
-          seconds: now.getSeconds()
-        });
+        sendWs({ type: "time_sync", ...buildDeviceTimePayload() });
         sendWs({ type: "get_state" });
       });
 
@@ -1054,7 +1051,7 @@
         showToast("Timer duration must be at least 1 minute.");
         return;
       }
-      sendWs({ type: "set_timer", channel, durationMinutes: minutes, target });
+      sendWs({ type: "set_timer", channel, durationMinutes: minutes, target, ...buildDeviceTimePayload() });
     });
 
     timerTarget.addEventListener("change", () => {
