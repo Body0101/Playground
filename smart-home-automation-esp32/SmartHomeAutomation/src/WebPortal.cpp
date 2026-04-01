@@ -20,6 +20,7 @@ bool eventNeedsSnapshot(const String &jsonLine) {
   const String event = doc["event"] | "";
   return event == "relay.changed" || event == "timer.started" || event == "timer.ended" || event == "timer.canceled" ||
          event == "manual.changed" || event == "interlock.changed" || event == "mode.changed" ||
+         event == "client.connected" || event == "client.disconnected" ||
          event == "night_lock.activated" || event == "night_lock.released" || event == "relay.night_forced_off" ||
          event == "energy_update" || event == "energy_tracking.changed";
 }
@@ -42,6 +43,7 @@ void WebPortal::begin(ControlEngine *engine, StorageLayer *storage, TimeKeeper *
   clients_.fill(false);
   clientMacs_.fill("");
   connectedClients_ = 0;
+  lastClientRefreshMs_ = 0;
 
   setupRoutes();
   server_.begin();
@@ -62,6 +64,12 @@ void WebPortal::loop() {
   // CAPTIVE PORTAL END
   server_.handleClient();
   socket_.loop();
+  // Reconcile active websocket sessions against the live AP station list so the
+  // client count reflects only currently connected devices.
+  if (millis() - lastClientRefreshMs_ >= 1000UL) {
+    lastClientRefreshMs_ = millis();
+    syncConnectedClients(true);
+  }
   processQueue();
 }
 
@@ -300,8 +308,7 @@ void WebPortal::onClientConnected(uint8_t clientId) {
       clientMacs_[clientId] = detectedMac;
     }
   }
-  connectedClients_ = recalcConnectedClients();
-  updateClientCountInEngine();
+  syncConnectedClients(true);
 
   const uint64_t eventTs = timeKeeper_->nowUserEpoch() > 0 ? timeKeeper_->nowUserEpoch() : timeKeeper_->nowEpoch();
 
@@ -342,8 +349,7 @@ void WebPortal::onClientDisconnected(uint8_t clientId) {
       clientMacs_[clientId] = "";
     }
   }
-  connectedClients_ = recalcConnectedClients();
-  updateClientCountInEngine();
+  syncConnectedClients(true);
 
   const uint64_t eventTs = timeKeeper_->nowUserEpoch() > 0 ? timeKeeper_->nowUserEpoch() : timeKeeper_->nowEpoch();
 
@@ -802,22 +808,80 @@ String WebPortal::handleSetTime(const String &body) {
 }
 
 uint16_t WebPortal::recalcConnectedClients() {
+  wifi_sta_list_t wifiStaList;
+  memset(&wifiStaList, 0, sizeof(wifiStaList));
+  const bool haveStationList = esp_wifi_ap_get_sta_list(&wifiStaList) == ESP_OK;
+
+  std::array<String, WS_MAX_CLIENTS> countedDevices{};
   uint16_t count = 0;
+
   if (contextMutex_ && xSemaphoreTake(contextMutex_, pdMS_TO_TICKS(25)) == pdTRUE) {
-    for (bool active : clients_) {
-      if (active) {
-        ++count;
+    for (size_t i = 0; i < clients_.size(); ++i) {
+      if (!clients_[i]) {
+        continue;
+      }
+
+      if (clientMacs_[i].isEmpty() || clientMacs_[i] == "UNKNOWN") {
+        clientMacs_[i] = resolveClientMac(static_cast<uint8_t>(i));
+      }
+
+      bool stationActive = !haveStationList;
+      if (haveStationList) {
+        stationActive = false;
+        for (int s = 0; s < wifiStaList.num; ++s) {
+          if (clientMacs_[i].equalsIgnoreCase(formatMac(wifiStaList.sta[s].mac))) {
+            stationActive = true;
+            break;
+          }
+        }
+      }
+
+      // Drop stale websocket sessions that no longer exist in the AP station list.
+      if (!stationActive) {
+        clients_[i] = false;
+        clientMacs_[i] = "";
+        continue;
+      }
+
+      String deviceKey = clientMacs_[i];
+      if (deviceKey.isEmpty() || deviceKey == "UNKNOWN") {
+        deviceKey = String("ws:") + String(i);
+      }
+
+      bool seen = false;
+      for (size_t existing = 0; existing < count; ++existing) {
+        if (countedDevices[existing].equalsIgnoreCase(deviceKey)) {
+          seen = true;
+          break;
+        }
+      }
+      if (!seen && count < WS_MAX_CLIENTS) {
+        countedDevices[count++] = deviceKey;
       }
     }
     xSemaphoreGive(contextMutex_);
-    return count;
-  }
-  for (bool active : clients_) {
-    if (active) {
-      ++count;
-    }
+  } else {
+    // If the mutex is temporarily busy, keep the last known live count instead of
+    // falsely dropping to zero and forcing a spurious AUTO/Night Lock UI transition.
+    return connectedClients_;
   }
   return count;
+}
+
+void WebPortal::syncConnectedClients(bool broadcastSnapshot) {
+  const uint16_t liveCount = recalcConnectedClients();
+  if (liveCount == connectedClients_) {
+    return;
+  }
+
+  connectedClients_ = liveCount;
+  updateClientCountInEngine();
+
+  // Push the authoritative state to every remaining client whenever the live
+  // device count changes so all UIs stay aligned on mode/night-lock state.
+  if (broadcastSnapshot && connectedClients_ > 0) {
+    broadcast(engine_->buildStateJson());
+  }
 }
 
 void WebPortal::updateClientCountInEngine() { engine_->updateConnectedClients(connectedClients_); }

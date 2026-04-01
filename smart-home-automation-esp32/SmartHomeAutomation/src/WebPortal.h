@@ -59,6 +59,7 @@ class WebPortal {
   static IPAddress ipFromAddr(uint32_t addr, bool reverseOrder);
   String handleSetTime(const String &body);
   uint16_t recalcConnectedClients();
+  void syncConnectedClients(bool broadcastSnapshot);
   void updateClientCountInEngine();
 
   static void onWsEventStatic(uint8_t clientId, WStype_t type, uint8_t *payload, size_t length);
@@ -79,6 +80,7 @@ class WebPortal {
   std::array<bool, WS_MAX_CLIENTS> clients_{};
   std::array<String, WS_MAX_CLIENTS> clientMacs_{};
   uint16_t connectedClients_ = 0;
+  uint32_t lastClientRefreshMs_ = 0;
   bool commandContextActive_ = false;
   TaskHandle_t commandContextTask_ = nullptr;
   String commandContextMac_ = "SYSTEM";

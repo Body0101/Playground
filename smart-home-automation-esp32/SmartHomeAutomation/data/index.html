@@ -843,6 +843,10 @@
       return !!(state && state.nightLock);
     }
 
+    function isInterlockBlocked(relay) {
+      return !!(relay && state && state.interlock && relay.interlockBlocked);
+    }
+
     function updateNightLockUi() {
       // Keep ON actions disabled in UI while backend night lock is active.
       const lock = isNightLockActive();
@@ -879,7 +883,11 @@
             <div class="meta">${timerRemainingText(relay)} | Timer Target: ${relay.timerTarget}</div>
           </div>
           <div class="actions">
-            <button class="primary" onclick="setManual(${relay.index}, 'ON')" ${nightLock ? "disabled title=\"Night Lock Active\"" : ""}>Manual ON</button>
+            <button class="primary" onclick="setManual(${relay.index}, 'ON')" ${
+              nightLock
+                ? "disabled title=\"Night Lock Active\""
+                : (isInterlockBlocked(relay) ? "disabled title=\"Interlock Active\"" : "")
+            }>Manual ON</button>
             <button class="warn" onclick="setManual(${relay.index}, 'OFF')">Manual OFF</button>
             <button onclick="setManual(${relay.index}, 'AUTO')">AUTO</button>
           </div>
@@ -1212,7 +1220,9 @@
 
       if (msg.type === "command_ack") {
         showToast(msg.msg || (msg.ok ? "OK" : "Failed"));
-        if (msg.ok) sendWs({ type: "get_state" });
+        // Always refresh from the ESP32 after a command result so every client keeps
+        // the server as the single source of truth for Night Lock/interlock state.
+        sendWs({ type: "get_state" });
         return;
       }
 
@@ -1288,6 +1298,13 @@
       // Mirror backend protection in UI to avoid sending blocked ON requests.
       if (isNightLockActive() && mode === "ON") {
         showToast("Night Lock Active");
+        return;
+      }
+      const relay = state && Array.isArray(state.relays)
+        ? state.relays.find((item) => Number(item.index) === Number(channel))
+        : null;
+      if (mode === "ON" && isInterlockBlocked(relay)) {
+        showToast("Interlock Active");
         return;
       }
       sendWs({ type: "set_manual", channel, mode });

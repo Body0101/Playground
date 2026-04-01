@@ -155,6 +155,25 @@ bool ControlEngine::setManualMode(size_t relayIndex, RelayMode mode, String *err
       return;
     }
 
+    // Interlock must reject conflicting manual ON commands on the backend too,
+    // so every client sees the same authoritative behavior.
+    if (mode == RelayMode::ON && runtime_->interlockEnabled) {
+      for (size_t i = 0; i < RELAY_COUNT; ++i) {
+        if (i == relayIndex) {
+          continue;
+        }
+        if (runtime_->relays[i].appliedState == RelayState::ON) {
+          if (error) *error = "Interlock Active";
+          publishEventLocked("ERROR",
+                             "manual.blocked_interlock",
+                             "Manual ON blocked by interlock because another relay is already ON.",
+                             static_cast<int>(relayIndex),
+                             true);
+          return;
+        }
+      }
+    }
+
     // Manual ON/OFF should immediately override any running timer.
     if (mode != RelayMode::AUTO && relay.timer.active) {
       finalizeEnergyTrackingLocked(relayIndex, relay, timerEpoch > 0 ? timerEpoch : nowEpoch, "timer.canceled");
@@ -503,6 +522,13 @@ String ControlEngine::buildStateJson() const {
       JsonObject relay = relays.add<JsonObject>();
       const RelayRuntime &r = runtime_->relays[i];
       const uint64_t onSeconds = effectiveOnSecondsLocked(r, nowEpoch);
+      bool otherRelayOn = false;
+      for (size_t other = 0; other < RELAY_COUNT; ++other) {
+        if (other != i && runtime_->relays[other].appliedState == RelayState::ON) {
+          otherRelayOn = true;
+          break;
+        }
+      }
       relay["index"] = i;
       relay["name"] = RELAY_CONFIG[i].name;
       relay["state"] = relayStateToText(r.appliedState);
@@ -524,6 +550,9 @@ String ControlEngine::buildStateJson() const {
       relay["powerW"] = r.ratedPowerWatts;
       relay["powerLocked"] = r.ratedPowerLocked;
       // RATED DYNAMIC END
+      // Interlock UI state is derived on the ESP32 so all clients receive the
+      // same disabled-button decision from one authoritative source.
+      relay["interlockBlocked"] = runtime_->interlockEnabled && otherRelayOn && r.appliedState != RelayState::ON;
     }
     JsonArray pirs = doc["pirs"].to<JsonArray>();
     for (size_t i = 0; i < PIR_COUNT; ++i) {
