@@ -16,6 +16,7 @@ class WebPortal {
  public:
   void begin(ControlEngine *engine, StorageLayer *storage, TimeKeeper *timeKeeper);
   void loop();
+  void recoverAfterAccessPointRestart();
 
   bool enqueueEvent(const String &eventJson, bool bufferIfOffline);
   uint16_t connectedClientCount() const;

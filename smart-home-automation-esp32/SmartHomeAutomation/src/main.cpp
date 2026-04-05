@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <esp_task_wdt.h>
 #include <LittleFS.h>
 #include "Config.h"
@@ -20,6 +21,20 @@ SemaphoreHandle_t gStateMutex = nullptr;
 
 TaskHandle_t gControlTaskHandle = nullptr;
 TaskHandle_t gNetworkTaskHandle = nullptr;
+
+namespace {
+enum class WiFiApRecoveryState : uint8_t {
+  IDLE,
+  WAITING_FOR_WIFI_OFF,
+  WAITING_FOR_AP_READY,
+};
+
+WiFiApRecoveryState gWiFiApRecoveryState = WiFiApRecoveryState::IDLE;
+uint32_t gLastWiFiHealthCheckMs = 0;
+uint32_t gLastWiFiRecoveryMs = 0;
+uint32_t gWiFiRecoveryStateMs = 0;
+uint8_t gConsecutiveWiFiHealthFailures = 0;
+}  // namespace
 
 String buildSystemEvent(const String &eventName, const String &message, const String &logType) {
   JsonDocument doc;
@@ -163,6 +178,113 @@ void maintainWiFi() {
   }
 }
 
+bool isWiFiApHealthy() {
+  const wifi_mode_t mode = WiFi.getMode();
+  const bool apModeOk = mode == WIFI_AP || mode == WIFI_AP_STA;
+  const bool apIpOk = WiFi.softAPIP() != IPAddress(0, 0, 0, 0);
+
+  wifi_sta_list_t wifiStaList;
+  memset(&wifiStaList, 0, sizeof(wifiStaList));
+  const bool staQueryOk = esp_wifi_ap_get_sta_list(&wifiStaList) == ESP_OK;
+
+  // Read station count as part of the watchdog path. This keeps the health
+  // check aligned with the AP connection bookkeeping used elsewhere.
+  (void)WiFi.softAPgetStationNum();
+
+  return apModeOk && apIpOk && staQueryOk;
+}
+
+void startWiFiApRecovery() {
+  if (gWiFiApRecoveryState != WiFiApRecoveryState::IDLE) {
+    return;
+  }
+
+  gLastWiFiRecoveryMs = millis();
+  gWiFiRecoveryStateMs = gLastWiFiRecoveryMs;
+  gConsecutiveWiFiHealthFailures = 0;
+  gWiFiApRecoveryState = WiFiApRecoveryState::WAITING_FOR_WIFI_OFF;
+
+  pushSystemEvent("wifi.ap_watchdog",
+                  "WiFi AP watchdog triggered automatic AP recovery.",
+                  false,
+                  true);
+
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+}
+
+void processWiFiApRecovery() {
+  const uint32_t nowMs = millis();
+
+  if (gWiFiApRecoveryState == WiFiApRecoveryState::WAITING_FOR_WIFI_OFF) {
+    if (nowMs - gWiFiRecoveryStateMs < 300UL) {
+      return;
+    }
+
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.persistent(false);
+    WiFi.setSleep(false);
+    WiFi.setAutoReconnect(true);
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    if (strlen(STA_SSID) > 0) {
+      WiFi.begin(STA_SSID, STA_PASSWORD);
+    }
+
+    gWiFiApRecoveryState = WiFiApRecoveryState::WAITING_FOR_AP_READY;
+    gWiFiRecoveryStateMs = nowMs;
+    return;
+  }
+
+  if (gWiFiApRecoveryState == WiFiApRecoveryState::WAITING_FOR_AP_READY) {
+    if (WiFi.softAPIP() != IPAddress(0, 0, 0, 0)) {
+      gWebPortal.recoverAfterAccessPointRestart();
+      pushSystemEvent("wifi.ap_recovered", "WiFi AP recovered automatically.");
+      gWiFiApRecoveryState = WiFiApRecoveryState::IDLE;
+      return;
+    }
+
+    // Abort the current recovery cycle and wait for the cooldown before trying
+    // again. This prevents an infinite restart loop if the radio is genuinely down.
+    if (nowMs - gWiFiRecoveryStateMs >= 4000UL) {
+      pushSystemEvent("wifi.ap_recovery_timeout",
+                      "WiFi AP recovery timed out; watchdog will retry later.",
+                      false,
+                      true);
+      gWiFiApRecoveryState = WiFiApRecoveryState::IDLE;
+    }
+  }
+}
+
+void checkWiFiHealth() {
+  constexpr uint32_t WIFI_HEALTH_CHECK_INTERVAL_MS = 5000UL;
+  constexpr uint32_t WIFI_RECOVERY_COOLDOWN_MS = 20000UL;
+  constexpr uint8_t WIFI_HEALTH_FAILURE_THRESHOLD = 2;
+
+  processWiFiApRecovery();
+  if (gWiFiApRecoveryState != WiFiApRecoveryState::IDLE) {
+    return;
+  }
+
+  const uint32_t nowMs = millis();
+  if (nowMs - gLastWiFiHealthCheckMs < WIFI_HEALTH_CHECK_INTERVAL_MS) {
+    return;
+  }
+  gLastWiFiHealthCheckMs = nowMs;
+
+  if (isWiFiApHealthy()) {
+    gConsecutiveWiFiHealthFailures = 0;
+    return;
+  }
+
+  if (nowMs - gLastWiFiRecoveryMs < WIFI_RECOVERY_COOLDOWN_MS) {
+    return;
+  }
+
+  if (++gConsecutiveWiFiHealthFailures >= WIFI_HEALTH_FAILURE_THRESHOLD) {
+    startWiFiApRecovery();
+  }
+}
+
 void initWatchdog() {
 #if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
   esp_task_wdt_config_t config = {
@@ -196,6 +318,7 @@ void networkTask(void *parameter) {
   while (true) {
     gWebPortal.loop();
     maintainWiFi();
+    checkWiFiHealth();
     gTimeKeeper.trySyncFromNtp();
     gTimeKeeper.maybePersistSyncPoint();
 

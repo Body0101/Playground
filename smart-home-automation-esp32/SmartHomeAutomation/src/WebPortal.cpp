@@ -25,6 +25,24 @@ bool eventNeedsSnapshot(const String &jsonLine) {
          event == "night_lock.activated" || event == "night_lock.released" || event == "relay.night_forced_off" ||
          event == "energy_update" || event == "energy_tracking.changed";
 }
+
+bool shouldRateLimitRelayCommand(size_t relayIndex) {
+  constexpr uint32_t RELAY_COMMAND_RATE_LIMIT_MS = 120UL;
+  static uint32_t lastRelayCommandMs[RELAY_COUNT] = {};
+
+  if (relayIndex >= RELAY_COUNT) {
+    return false;
+  }
+
+  const uint32_t nowMs = millis();
+  if (lastRelayCommandMs[relayIndex] != 0 &&
+      static_cast<uint32_t>(nowMs - lastRelayCommandMs[relayIndex]) < RELAY_COMMAND_RATE_LIMIT_MS) {
+    return true;
+  }
+
+  lastRelayCommandMs[relayIndex] = nowMs;
+  return false;
+}
 }  // namespace
 
 WebPortal *WebPortal::instance_ = nullptr;
@@ -60,6 +78,23 @@ void WebPortal::begin(ControlEngine *engine, StorageLayer *storage, TimeKeeper *
   // CAPTIVE PORTAL START
   beginCaptivePortal();
   // CAPTIVE PORTAL END
+}
+
+void WebPortal::recoverAfterAccessPointRestart() {
+  // Clear stale client/session state first so reconnecting browsers start from a
+  // clean AP view after the Wi-Fi stack is rebuilt.
+  clients_.fill(false);
+  clientMacs_.fill("");
+  connectedClients_ = 0;
+  stateBroadcastPending_ = false;
+  updateClientCountInEngine();
+
+  // Restart listeners after AP recovery so HTTP, WebSocket, and captive DNS all
+  // bind again without changing the rest of the project flow.
+  server_.begin();
+  socket_.begin();
+  socket_.onEvent(onWsEventStatic);
+  beginCaptivePortal();
 }
 
 void WebPortal::loop() {
@@ -502,6 +537,10 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   if (type == "set_manual") {
     const size_t channel = static_cast<size_t>(doc["channel"] | 99);
     const RelayMode mode = relayModeFromText(doc["mode"] | "AUTO");
+    if (shouldRateLimitRelayCommand(channel)) {
+      sendCommandAck(clientId, false, "Relay command rate limited, please retry.");
+      return;
+    }
     String errorText;
     const bool ok = engine_->setManualMode(channel, mode, &errorText);
     if (!ok && errorText == "Night Lock Active") {
