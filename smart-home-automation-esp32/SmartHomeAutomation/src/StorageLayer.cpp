@@ -36,7 +36,7 @@ bool StorageLayer::begin() {
   if (!ioMutex_) {
     return false;
   }
-  if (!LittleFS.begin(true)) {
+  if (!LittleFS.begin(false)) {
     return false;
   }
   if (!lock()) {

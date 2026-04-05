@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
-
+#include <LittleFS.h>
 #include "Config.h"
 #include "ControlEngine.h"
 #include "StorageLayer.h"
@@ -228,11 +228,25 @@ void setup() {
       delay(1000);
     }
   }
+    // Fail fast if the web UI is missing, instead of bringing up a broken AP/server.
+  if (!LittleFS.exists("/index.html")) {
+    Serial.println("[Init] Missing /index.html in LittleFS. Upload filesystem image again.");
+    while (true) {
+      delay(1000);
+    }
+  }
+
   gStorage.loadRuntime(&gRuntime);
 
   gTimeKeeper.begin(gStorage.prefs());
 
   setupWiFi();
+  // Give SoftAP a short time to obtain its IP before starting captive DNS/server.
+  const uint32_t apWaitStart = millis();
+  while (WiFi.softAPIP() == IPAddress(0, 0, 0, 0) && (millis() - apWaitStart) < 2000UL) {
+    delay(10);
+  }
+
   initWatchdog();
 
   gControl.begin(&gRuntime, &gStorage, &gTimeKeeper, gStateMutex);
