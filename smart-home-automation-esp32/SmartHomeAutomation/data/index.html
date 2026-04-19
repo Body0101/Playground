@@ -674,49 +674,51 @@ span{
 <body>
   <main class="app">
     <section class="panel header">
-      <h1>HomeCore</h1>
+      <h1 data-i18n="app_title">HomeCore</h1>
       <div class="status-row">
-        <span id="wsStatus" class="pill warn"><span class="status-dot"></span>WebSocket: Offline</span>
+        <span id="wsStatus" class="pill warn"><span class="status-dot"></span><span id="wsStatusText">WebSocket: Offline</span></span>
         <span id="syncStatus" class="pill">Sync: Idle</span>
         <span id="modeStatus" class="pill">Mode: --</span>
         <span id="dayNightStatus" class="pill">Day/Night: --</span>
         <span id="clientsStatus" class="pill">Clients: 0</span>
+        <!-- ADDED: language toggle without changing the existing layout classes -->
+        <button id="languageToggle" class="theme-toggle" type="button" style="min-width:76px;" data-i18n="language_toggle">EN | AR</button>
         <button id="themeToggle" class="theme-toggle" type="button">Dark Mode</button>
       </div>
     </section>
 
     <section class="grid">
       <article class="panel relay-card">
-        <h2>Relay Control</h2>
+        <h2 data-i18n="relay_control_title">Relay Control</h2>
         <div id="relayContainer"></div>
       </article>
 
       <article class="panel half">
-        <h2>Timer Settings</h2>
+        <h2 data-i18n="timer_settings_title">Timer Settings</h2>
         <div class="settings-grid">
           <label class="field">
-            Relay Channel
+            <span data-i18n="relay_channel_label">Relay Channel</span>
             <select id="timerChannel">
-              <option value="0">Relay A</option>
-              <option value="1">Relay B</option>
+              <option value="0" data-i18n="relay_a">Relay A</option>
+              <option value="1" data-i18n="relay_b">Relay B</option>
             </select>
           </label>
           <label class="field">
-            Duration (minutes)
+            <span data-i18n="duration_minutes_label">Duration (minutes)</span>
             <input id="timerMinutes" type="number" min="1" step="1" value="5">
           </label>
           <label class="field">
-            Target State
+            <span data-i18n="target_state_label">Target State</span>
             <select id="timerTarget">
-              <option value="ON">ON</option>
-              <option value="OFF">OFF</option>
+              <option value="ON" data-i18n="on">ON</option>
+              <option value="OFF" data-i18n="off">OFF</option>
             </select>
           </label>
           <div class="actions">
-            <button id="startTimerBtn" class="primary">Start Timer</button>
-            <button id="cancelTimerBtn">Cancel Timer</button>
+            <button id="startTimerBtn" class="primary" data-i18n="start_timer">Start Timer</button>
+            <button id="cancelTimerBtn" data-i18n="cancel_timer">Cancel Timer</button>
           </div>
-          <div class="meta">
+          <div class="meta" data-i18n="timer_help">
             Timer can start only when selected relay is in manual ON or manual OFF mode.
             Firmware stores target end time to reduce flash wear.
           </div>
@@ -724,55 +726,55 @@ span{
       </article>
 
       <article class="panel half">
-        <h2>Day/Night + Settings</h2>
+        <h2 data-i18n="day_night_settings_title">Day/Night + Settings</h2>
         <div class="settings-grid">
-          <div id="dayNightText" class="meta">Day mode: 06:00-18:00 | Night mode: 18:00-06:00</div>
+          <div id="dayNightText" class="meta" data-i18n="day_night_text">Day mode: 06:00-18:00 | Night mode: 18:00-06:00</div>
           <label class="toggle">
             <input id="energyTrackingToggle" type="checkbox">
-            Enable timer-only energy tracking
+            <span data-i18n="enable_energy_tracking">Enable timer-only energy tracking</span>
           </label>
           <div class="actions">
-            <button id="refreshBtn">Refresh State</button>
-            <button id="syncTimeBtn">Sync Time Now</button>
+            <button id="refreshBtn" data-i18n="refresh_state">Refresh State</button>
+            <button id="syncTimeBtn" data-i18n="sync_time_now">Sync Time Now</button>
           </div>
         </div>
       </article>
 
       <!-- PIR UI START -->
       <article class="panel half">
-        <h2>Sensor Mapping</h2>
+        <h2 data-i18n="sensor_mapping_title">Sensor Mapping</h2>
         <div id="pirMappingList" class="mapping-grid"></div>
         <div class="actions" style="margin-top:12px;">
-          <button id="savePirMappingBtn" class="primary" type="button">Save Mapping</button>
+          <button id="savePirMappingBtn" class="primary" type="button" data-i18n="save_mapping">Save Mapping</button>
         </div>
       </article>
       <!-- PIR UI END -->
 
       <!-- SENSOR FLASH START -->
       <article class="panel half">
-        <h2>Sensor Activity</h2>
+        <h2 data-i18n="sensor_activity_title">Sensor Activity</h2>
         <div id="sensorIndicatorList" class="sensor-grid"></div>
       </article>
       <!-- SENSOR FLASH END -->
 
       <article class="panel half">
-        <h2>Power Consumption</h2>
-        <div id="powerDisabledText" class="meta">Energy tracking is disabled from settings.</div>
+        <h2 data-i18n="power_consumption_title">Power Consumption</h2>
+        <div id="powerDisabledText" class="meta" data-i18n="energy_tracking_disabled">Energy tracking is disabled from settings.</div>
         <!-- POWER RESET START -->
         <div id="powerActions" class="actions" style="display:none; margin: 0 0 12px;">
-          <button id="resetConsumptionBtn" type="button">Reset Consumption</button>
+          <button id="resetConsumptionBtn" type="button" data-i18n="reset_consumption">Reset Consumption</button>
         </div>
         <!-- POWER RESET END -->
         <ul id="powerList" class="power-list"></ul>
       </article>
 
       <article class="panel half">
-        <h2>Timer Statistics</h2>
+        <h2 data-i18n="timer_statistics_title">Timer Statistics</h2>
         <ul id="statsList" class="power-list"></ul>
       </article>
 
       <article class="panel full">
-        <h2>Activity Log</h2>
+        <h2 data-i18n="activity_log_title">Activity Log</h2>
         <ul id="logList" class="log-list"></ul>
       </article>
     </section>
@@ -797,7 +799,7 @@ span{
     <!-- النص -->
     <div class="footer-center">
 
-        <section class="sec"> Developed by</section>
+        <section class="sec" data-i18n="developed_by"> Developed by</section>
      
      <div class="names">
   <span>Basel Wael</span> ,
@@ -815,10 +817,10 @@ span{
 
     <!-- اليمين -->
     <div class="footer-right">
-      <div class="contact-title">Contact</div>
+      <div class="contact-title" data-i18n="contact_title">Contact</div>
       <div class="links">
-        <a href="https://github.com/Body0101/Playground" target="_blank">GitHub</a>
-        <a href="mailto:homecore@ics.tanta.edu.eg?subject=HomeCore%20Project&body=Hello%20HomeCore%20Team," target="_blank">Email</a>
+        <a href="https://github.com/Body0101/Playground" target="_blank" data-i18n="github_label">GitHub</a>
+        <a href="mailto:homecore@ics.tanta.edu.eg?subject=HomeCore%20Project&body=Hello%20HomeCore%20Team," target="_blank" data-i18n="email_label">Email</a>
       </div>
     </div>
 
@@ -845,6 +847,7 @@ span{
       "energy_tracking.changed"
     ]);
     const THEME_KEY = "esp32_ui_theme";
+    const LANG_KEY = "homecore_ui_lang";
 
     const relayContainer = document.getElementById("relayContainer");
     const powerList = document.getElementById("powerList");
@@ -860,10 +863,12 @@ span{
     // SENSOR FLASH END
 
     const wsStatus = document.getElementById("wsStatus");
+    const wsStatusText = document.getElementById("wsStatusText");
     const syncStatus = document.getElementById("syncStatus");
     const modeStatus = document.getElementById("modeStatus");
     const dayNightStatus = document.getElementById("dayNightStatus");
     const clientsStatus = document.getElementById("clientsStatus");
+    const languageToggle = document.getElementById("languageToggle");
     const themeToggle = document.getElementById("themeToggle");
 
     const timerChannel = document.getElementById("timerChannel");
@@ -885,6 +890,333 @@ span{
     let reconnectHandle = null;
     let reconnectDelayMs = 1800;
     let serverTimeOffsetSec = 0;
+    let currentLanguage = localStorage.getItem(LANG_KEY) === "ar" ? "ar" : "en";
+    let currentSyncText = "Sync: Idle";
+    let currentSyncType = "idle";
+    const logHistory = [];
+
+    // ADDED: lightweight client-side translation dictionary.
+    const I18N = {
+      en: {
+        app_title: "HomeCore",
+        language_toggle: "EN | AR",
+        relay_control_title: "Relay Control",
+        timer_settings_title: "Timer Settings",
+        relay_channel_label: "Relay Channel",
+        relay_a: "Relay A",
+        relay_b: "Relay B",
+        duration_minutes_label: "Duration (minutes)",
+        target_state_label: "Target State",
+        start_timer: "Start Timer",
+        cancel_timer: "Cancel Timer",
+        timer_help: "Timer can start only when selected relay is in manual ON or manual OFF mode. Firmware stores target end time to reduce flash wear.",
+        day_night_settings_title: "Day/Night + Settings",
+        day_night_text: "Day mode: 06:00-18:00 | Night mode: 18:00-06:00",
+        enable_energy_tracking: "Enable timer-only energy tracking",
+        refresh_state: "Refresh State",
+        sync_time_now: "Sync Time Now",
+        sensor_mapping_title: "Sensor Mapping",
+        save_mapping: "Save Mapping",
+        sensor_activity_title: "Sensor Activity",
+        power_consumption_title: "Power Consumption",
+        energy_tracking_disabled: "Energy tracking is disabled from settings.",
+        reset_consumption: "Reset Consumption",
+        timer_statistics_title: "Timer Statistics",
+        activity_log_title: "Activity Log",
+        developed_by: "Developed by",
+        contact_title: "Contact",
+        github_label: "GitHub",
+        email_label: "Email",
+        dark_mode: "Dark Mode",
+        light_mode: "Light Mode",
+        websocket_status: "WebSocket: {status}",
+        online: "Online",
+        offline: "Offline",
+        sync_idle: "Sync: Idle",
+        sync_in_progress: "Sync: In Progress...",
+        sync_ok: "Sync: OK",
+        sync_failed: "Sync: Failed",
+        mode_status: "Mode: {value}",
+        day_night_status: "Day/Night: {phase} | Night Lock: {status}",
+        clients_status: "Clients: {count}",
+        night_lock: "Night Lock",
+        active: "Active",
+        idle: "Idle",
+        last_trigger: "Last trigger: {value}",
+        manual_mode_source: "Manual Mode: {mode} | Source: {source}",
+        timer_target_meta: "{remaining} | Timer Target: {target}",
+        no_active_timer: "No active timer",
+        timer_ending: "Timer ending...",
+        remaining: "Remaining {time}",
+        manual_on: "Manual ON",
+        manual_off: "Manual OFF",
+        auto: "AUTO",
+        relay_label: "Relay {index}",
+        system_label: "System",
+        source_label: "Source",
+        manual_mode_label: "Manual Mode",
+        timer_target_label: "Timer Target",
+        rated_power_w: "Rated Power (W)",
+        rated_power_once: "Rated power can only be set once",
+        save_rated_power: "Save Rated Power",
+        last_timer_energy: "Last Timer Energy",
+        total_timer_energy: "Total Timer Energy",
+        total_timer_energy_label: "Total Timer Energy:",
+        timer_uses: "Timer Uses",
+        total_timer_minutes: "Total Timer Minutes",
+        on: "ON",
+        off: "OFF",
+        day: "DAY",
+        night: "NIGHT",
+        manual: "MANUAL",
+        timer: "TIMER",
+        pir: "PIR",
+        none: "NONE",
+        mixed: "MIXED",
+        log_badge_on: "ON",
+        log_badge_off: "OFF",
+        log_badge_timer: "TIMER",
+        log_badge_error: "ERROR",
+        toast_ws_offline_reconnecting: "WebSocket offline, reconnecting...",
+        toast_time_sync_failed: "Time sync request failed.",
+        toast_state_api_waiting: "State API not ready. Waiting for WebSocket...",
+        toast_load_history_failed: "Could not load history logs.",
+        toast_night_lock_active: "Night Lock Active",
+        toast_sensor_mapping_saved: "Sensor mapping saved.",
+        toast_save_failed: "Save failed.",
+        toast_could_not_save_sensor_mapping: "Could not save sensor mapping.",
+        toast_consumption_reset: "Consumption counters reset.",
+        toast_reset_failed: "Reset failed.",
+        toast_reset_request_failed: "Reset request failed.",
+        toast_rated_power_gt_zero: "Rated power must be greater than zero.",
+        toast_rated_power_saved: "Rated power saved.",
+        toast_could_not_save_rated_power: "Could not save rated power.",
+        toast_rated_power_request_failed: "Rated power request failed.",
+        toast_timer_duration_min_1: "Timer duration must be at least 1 minute.",
+        toast_ok: "OK",
+        toast_failed: "Failed",
+        toast_manual_mode_updated: "Manual mode updated.",
+        toast_timer_saved: "Timer saved.",
+        toast_timer_canceled: "Timer canceled.",
+        toast_no_active_timer: "No active timer on this relay.",
+        toast_time_synchronized: "Time synchronized.",
+        toast_energy_tracking_enabled: "Energy tracking enabled.",
+        toast_energy_tracking_disabled: "Energy tracking disabled."
+      },
+      ar: {
+        app_title: "HomeCore",
+        language_toggle: "EN | AR",
+        relay_control_title: "التحكم بالمرحّلات",
+        timer_settings_title: "إعدادات المؤقت",
+        relay_channel_label: "قناة المرحّل",
+        relay_a: "المرحّل A",
+        relay_b: "المرحّل B",
+        duration_minutes_label: "المدة (بالدقائق)",
+        target_state_label: "الحالة المستهدفة",
+        start_timer: "بدء المؤقت",
+        cancel_timer: "إلغاء المؤقت",
+        timer_help: "يمكن بدء المؤقت فقط عندما يكون المرحّل المحدد في وضع التشغيل اليدوي أو الإيقاف اليدوي. يحفظ البرنامج الثابت وقت الانتهاء المستهدف لتقليل استهلاك الفلاش.",
+        day_night_settings_title: "إعدادات النهار/الليل",
+        day_night_text: "وضع النهار: 06:00-18:00 | وضع الليل: 18:00-06:00",
+        enable_energy_tracking: "تفعيل تتبع الطاقة للمؤقت فقط",
+        refresh_state: "تحديث الحالة",
+        sync_time_now: "مزامنة الوقت الآن",
+        sensor_mapping_title: "ربط المستشعرات",
+        save_mapping: "حفظ الربط",
+        sensor_activity_title: "نشاط المستشعرات",
+        power_consumption_title: "استهلاك الطاقة",
+        energy_tracking_disabled: "تم تعطيل تتبع الطاقة من الإعدادات.",
+        reset_consumption: "إعادة تعيين الاستهلاك",
+        timer_statistics_title: "إحصاءات المؤقت",
+        activity_log_title: "سجل النشاط",
+        developed_by: "تم التطوير بواسطة",
+        contact_title: "تواصل",
+        github_label: "جيت هاب",
+        email_label: "البريد الإلكتروني",
+        dark_mode: "الوضع الداكن",
+        light_mode: "الوضع الفاتح",
+        websocket_status: "WebSocket: {status}",
+        online: "متصل",
+        offline: "غير متصل",
+        sync_idle: "المزامنة: في وضع الخمول",
+        sync_in_progress: "المزامنة: جارٍ التنفيذ...",
+        sync_ok: "المزامنة: ناجحة",
+        sync_failed: "المزامنة: فشلت",
+        mode_status: "الوضع: {value}",
+        day_night_status: "النهار/الليل: {phase} | القفل الليلي: {status}",
+        clients_status: "العملاء: {count}",
+        night_lock: "القفل الليلي",
+        active: "نشط",
+        idle: "خامل",
+        last_trigger: "آخر تشغيل: {value}",
+        manual_mode_source: "الوضع اليدوي: {mode} | المصدر: {source}",
+        timer_target_meta: "{remaining} | هدف المؤقت: {target}",
+        no_active_timer: "لا يوجد مؤقت نشط",
+        timer_ending: "المؤقت ينتهي...",
+        remaining: "المتبقي {time}",
+        manual_on: "تشغيل يدوي",
+        manual_off: "إيقاف يدوي",
+        auto: "تلقائي",
+        relay_label: "المرحّل {index}",
+        system_label: "النظام",
+        source_label: "المصدر",
+        manual_mode_label: "الوضع اليدوي",
+        timer_target_label: "هدف المؤقت",
+        rated_power_w: "القدرة المقننة (واط)",
+        rated_power_once: "يمكن ضبط القدرة المقننة مرة واحدة فقط",
+        save_rated_power: "حفظ القدرة المقننة",
+        last_timer_energy: "طاقة آخر مؤقت",
+        total_timer_energy: "إجمالي طاقة المؤقت",
+        total_timer_energy_label: "إجمالي طاقة المؤقت:",
+        timer_uses: "عدد مرات استخدام المؤقت",
+        total_timer_minutes: "إجمالي دقائق المؤقت",
+        on: "تشغيل",
+        off: "إيقاف",
+        day: "نهار",
+        night: "ليل",
+        manual: "يدوي",
+        timer: "مؤقت",
+        pir: "مستشعر PIR",
+        none: "لا يوجد",
+        mixed: "مختلط",
+        log_badge_on: "تشغيل",
+        log_badge_off: "إيقاف",
+        log_badge_timer: "مؤقت",
+        log_badge_error: "خطأ",
+        toast_ws_offline_reconnecting: "اتصال WebSocket غير متصل، جارٍ إعادة الاتصال...",
+        toast_time_sync_failed: "فشل طلب مزامنة الوقت.",
+        toast_state_api_waiting: "واجهة الحالة غير جاهزة بعد. جارٍ انتظار WebSocket...",
+        toast_load_history_failed: "تعذر تحميل سجل الأحداث السابق.",
+        toast_night_lock_active: "القفل الليلي نشط",
+        toast_sensor_mapping_saved: "تم حفظ ربط المستشعرات.",
+        toast_save_failed: "فشل الحفظ.",
+        toast_could_not_save_sensor_mapping: "تعذر حفظ ربط المستشعرات.",
+        toast_consumption_reset: "تمت إعادة تعيين عدادات الاستهلاك.",
+        toast_reset_failed: "فشلت إعادة التعيين.",
+        toast_reset_request_failed: "فشل طلب إعادة التعيين.",
+        toast_rated_power_gt_zero: "يجب أن تكون القدرة المقننة أكبر من الصفر.",
+        toast_rated_power_saved: "تم حفظ القدرة المقننة.",
+        toast_could_not_save_rated_power: "تعذر حفظ القدرة المقننة.",
+        toast_rated_power_request_failed: "فشل طلب القدرة المقننة.",
+        toast_timer_duration_min_1: "يجب أن تكون مدة المؤقت دقيقة واحدة على الأقل.",
+        toast_ok: "تم",
+        toast_failed: "فشل",
+        toast_manual_mode_updated: "تم تحديث الوضع اليدوي.",
+        toast_timer_saved: "تم حفظ المؤقت.",
+        toast_timer_canceled: "تم إلغاء المؤقت.",
+        toast_no_active_timer: "لا يوجد مؤقت نشط لهذا المرحّل.",
+        toast_time_synchronized: "تمت مزامنة الوقت.",
+        toast_energy_tracking_enabled: "تم تفعيل تتبع الطاقة.",
+        toast_energy_tracking_disabled: "تم تعطيل تتبع الطاقة."
+      }
+    };
+
+    const MESSAGE_KEY_MAP = {
+      "Sync: Idle": "sync_idle",
+      "Sync: In Progress...": "sync_in_progress",
+      "Sync: OK": "sync_ok",
+      "Sync: Failed": "sync_failed",
+      "WebSocket offline, reconnecting...": "toast_ws_offline_reconnecting",
+      "Time sync request failed.": "toast_time_sync_failed",
+      "State API not ready. Waiting for WebSocket...": "toast_state_api_waiting",
+      "Could not load history logs.": "toast_load_history_failed",
+      "Night Lock Active": "toast_night_lock_active",
+      "Sensor mapping saved.": "toast_sensor_mapping_saved",
+      "Save failed.": "toast_save_failed",
+      "Could not save sensor mapping.": "toast_could_not_save_sensor_mapping",
+      "Consumption counters reset.": "toast_consumption_reset",
+      "Reset failed.": "toast_reset_failed",
+      "Reset request failed.": "toast_reset_request_failed",
+      "Rated power must be greater than zero.": "toast_rated_power_gt_zero",
+      "Rated power saved.": "toast_rated_power_saved",
+      "Could not save rated power.": "toast_could_not_save_rated_power",
+      "Rated power request failed.": "toast_rated_power_request_failed",
+      "Timer duration must be at least 1 minute.": "toast_timer_duration_min_1",
+      "OK": "toast_ok",
+      "Failed": "toast_failed",
+      "Manual mode updated.": "toast_manual_mode_updated",
+      "Timer saved.": "toast_timer_saved",
+      "Timer canceled.": "toast_timer_canceled",
+      "No active timer on this relay.": "toast_no_active_timer",
+      "Time synchronized.": "toast_time_synchronized",
+      "Energy tracking enabled.": "toast_energy_tracking_enabled",
+      "Energy tracking disabled.": "toast_energy_tracking_disabled"
+    };
+
+    function t(key, vars = {}) {
+      const dict = I18N[currentLanguage] || I18N.en;
+      let text = dict[key] ?? I18N.en[key] ?? key;
+      Object.entries(vars).forEach(([name, value]) => {
+        text = text.replace(new RegExp(`\\{${name}\\}`, "g"), value);
+      });
+      return text;
+    }
+
+    function translateUiMessage(message) {
+      const mappedKey = MESSAGE_KEY_MAP[String(message || "")];
+      return mappedKey ? t(mappedKey) : message;
+    }
+
+    function translateRelayName(name) {
+      if (name === "Relay A") return t("relay_a");
+      if (name === "Relay B") return t("relay_b");
+      return name;
+    }
+
+    function translatePirName(name) {
+      const map = {
+        "PIR A": currentLanguage === "ar" ? "مستشعر PIR A" : "PIR A",
+        "PIR B": currentLanguage === "ar" ? "مستشعر PIR B" : "PIR B",
+        "PIR C": currentLanguage === "ar" ? "مستشعر PIR C" : "PIR C"
+      };
+      return map[name] || name;
+    }
+
+    function translateModeValue(value) {
+      const keyMap = {
+        ON: "on",
+        OFF: "off",
+        AUTO: "auto",
+        MANUAL: "manual",
+        TIMER: "timer",
+        MIXED: "mixed",
+        MANUAL_WEB: "manual",
+        AUTO_PIR: "auto"
+      };
+      return t(keyMap[value] || String(value || "").toLowerCase());
+    }
+
+    function translateSourceValue(value) {
+      const keyMap = { MANUAL: "manual", TIMER: "timer", PIR: "pir", NONE: "none" };
+      return t(keyMap[value] || String(value || "").toLowerCase());
+    }
+
+    function translateDayPhase(value) {
+      const keyMap = { DAY: "day", NIGHT: "night" };
+      return t(keyMap[value] || String(value || "").toLowerCase());
+    }
+
+    function applyStaticTranslations() {
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      document.title = t("app_title");
+    }
+
+    function applyLanguage(language) {
+      currentLanguage = language === "ar" ? "ar" : "en";
+      localStorage.setItem(LANG_KEY, currentLanguage);
+      document.documentElement.lang = currentLanguage;
+      document.documentElement.dir = currentLanguage === "ar" ? "rtl" : "ltr";
+      applyStaticTranslations();
+      ThemeManager.refresh();
+      setConnectionStatus(socketReady);
+      setSyncStatus(currentSyncText, currentSyncType);
+      if (state) {
+        renderState();
+      }
+      renderLogList();
+    }
 
     /* ==========================================
        Theme Manager (Auto + Manual + localStorage)
@@ -898,7 +1230,7 @@ span{
 
       function applyTheme(theme) {
         document.documentElement.setAttribute("data-theme", theme);
-        themeToggle.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+        themeToggle.textContent = theme === "dark" ? t("light_mode") : t("dark_mode");
       }
 
       function init() {
@@ -927,14 +1259,18 @@ span{
         applyTheme(next);
       }
 
-      return { init, toggle };
+      function refresh() {
+        applyTheme(document.documentElement.getAttribute("data-theme") || preferredTheme());
+      }
+
+      return { init, toggle, refresh };
     })();
 
     /* ==========================================
        UI Helpers
        ========================================== */
     function showToast(message) {
-      toast.textContent = message;
+      toast.textContent = translateUiMessage(message);
       toast.classList.add("show");
       clearTimeout(showToast._timer);
       showToast._timer = setTimeout(() => toast.classList.remove("show"), 2300);
@@ -942,11 +1278,13 @@ span{
 
     function setConnectionStatus(online) {
       wsStatus.className = `pill ${online ? "good" : "warn"}`;
-      wsStatus.innerHTML = `<span class="status-dot"></span>WebSocket: ${online ? "Online" : "Offline"}`;
+      wsStatusText.textContent = t("websocket_status", { status: t(online ? "online" : "offline") });
     }
 
     function setSyncStatus(text, type = "idle") {
-      syncStatus.textContent = text;
+      currentSyncText = text;
+      currentSyncType = type;
+      syncStatus.textContent = translateUiMessage(text);
       syncStatus.className = "pill";
       if (type === "good") syncStatus.classList.add("good");
       if (type === "warn") syncStatus.classList.add("warn");
@@ -962,23 +1300,23 @@ span{
     }
 
     function formatMinutesSeconds(totalSec) {
-      if (totalSec <= 0) return "0m 0s";
+      if (totalSec <= 0) return currentLanguage === "ar" ? "0د 0ث" : "0m 0s";
       const min = Math.floor(totalSec / 60);
       const sec = totalSec % 60;
-      return `${min}m ${sec}s`;
+      return currentLanguage === "ar" ? `${min}د ${sec}ث` : `${min}m ${sec}s`;
     }
 
     function timerRemainingText(relay) {
-      if (!relay.timerActive || !relay.timerEnd) return "No active timer";
+      if (!relay.timerActive || !relay.timerEnd) return t("no_active_timer");
       const rem = relay.timerEnd - nowEpoch();
-      if (rem <= 0) return "Timer ending...";
-      return `Remaining ${formatMinutesSeconds(rem)}`;
+      if (rem <= 0) return t("timer_ending");
+      return t("remaining", { time: formatMinutesSeconds(rem) });
     }
 
     function relayBadge(stateText) {
       return stateText === "ON"
-        ? `<span class="pill good">ON</span>`
-        : `<span class="pill">OFF</span>`;
+        ? `<span class="pill good">${escapeHtml(t("on"))}</span>`
+        : `<span class="pill">${escapeHtml(t("off"))}</span>`;
     }
 
     function isNightLockActive() {
@@ -1027,16 +1365,22 @@ span{
       relayContainer.innerHTML = state.relays.map((relay) => `
         <div class="relay-row">
           <div>
-            <div class="relay-title">${relay.name} ${relayBadge(relay.state)}</div>
-            <div class="meta">Manual Mode: ${relay.manualMode} | Source: ${relay.source}</div>
-            <div class="meta">${timerRemainingText(relay)} | Timer Target: ${relay.timerTarget}</div>
+            <div class="relay-title">${escapeHtml(translateRelayName(relay.name))} ${relayBadge(relay.state)}</div>
+            <div class="meta">${escapeHtml(t("manual_mode_source", {
+              mode: translateModeValue(relay.manualMode),
+              source: translateSourceValue(relay.source)
+            }))}</div>
+            <div class="meta">${escapeHtml(t("timer_target_meta", {
+              remaining: timerRemainingText(relay),
+              target: translateModeValue(relay.timerTarget)
+            }))}</div>
           </div>
           <div class="actions">
             <button class="primary" onclick="setManual(${relay.index}, 'ON')" ${
-              nightLock ? "disabled title=\"Night Lock Active\"" : ""
-            }>Manual ON</button>
-            <button class="warn" onclick="setManual(${relay.index}, 'OFF')">Manual OFF</button>
-            <button onclick="setManual(${relay.index}, 'AUTO')">AUTO</button>
+              nightLock ? `disabled title="${escapeHtml(t("toast_night_lock_active"))}"` : ""
+            }>${escapeHtml(t("manual_on"))}</button>
+            <button class="warn" onclick="setManual(${relay.index}, 'OFF')">${escapeHtml(t("manual_off"))}</button>
+            <button onclick="setManual(${relay.index}, 'AUTO')">${escapeHtml(t("auto"))}</button>
           </div>
         </div>
       `).join("");
@@ -1048,14 +1392,14 @@ span{
       const nightLocked = isNightLockActive();
       pirMappingList.innerHTML = state.pirs.map((pir) => `
         <div class="mapping-row">
-          <div class="mapping-label">${pir.name}</div>
+          <div class="mapping-label">${escapeHtml(translatePirName(pir.name))}</div>
           <label class="mapping-check">
             <input id="pir${pir.index}RelayA" type="checkbox" ${pir.relayA ? "checked" : ""} ${nightLocked ? "disabled" : ""}>
-            Relay A
+            ${escapeHtml(t("relay_a"))}
           </label>
           <label class="mapping-check">
             <input id="pir${pir.index}RelayB" type="checkbox" ${pir.relayB ? "checked" : ""} ${nightLocked ? "disabled" : ""}>
-            Relay B
+            ${escapeHtml(t("relay_b"))}
           </label>
         </div>
       `).join("");
@@ -1073,9 +1417,9 @@ span{
       if (!state || !Array.isArray(state.pirs)) return;
       sensorIndicatorList.innerHTML = state.pirs.map((pir) => `
         <div class="sensor-card ${isSensorIndicatorActive(pir) ? "active" : "inactive"}">
-          <div class="sensor-name">${pir.name}</div>
-          <div class="sensor-meta">${isSensorIndicatorActive(pir) ? "Active" : "Idle"}</div>
-          <div class="sensor-meta">Last trigger: ${pir.lastTrigger ? formatTimestamp(pir.lastTrigger) : "--"}</div>
+          <div class="sensor-name">${escapeHtml(translatePirName(pir.name))}</div>
+          <div class="sensor-meta">${escapeHtml(isSensorIndicatorActive(pir) ? t("active") : t("idle"))}</div>
+          <div class="sensor-meta">${escapeHtml(t("last_trigger", { value: pir.lastTrigger ? formatTimestamp(pir.lastTrigger) : "--" }))}</div>
         </div>
       `).join("");
     }
@@ -1109,42 +1453,45 @@ span{
         totalWh += wh;
         return `
           <li class="power-item">
-            <strong>${relay.name}</strong><br>
+            <strong>${escapeHtml(translateRelayName(relay.name))}</strong><br>
             <!-- RATED DYNAMIC START -->
             <label class="field" style="margin:8px 0 10px;">
-              Rated Power (W)
+              ${escapeHtml(t("rated_power_w"))}
               <input id="ratedPower${relay.index}" type="number" min="0.1" step="0.1" value="${powerW.toFixed(1)}" ${(powerLocked || nightLocked) ? "disabled" : ""}>
             </label>
-            <div class="meta" style="margin-bottom:8px;">Rated power can only be set once</div>
+            <div class="meta" style="margin-bottom:8px;">${escapeHtml(t("rated_power_once"))}</div>
             <div class="actions" style="margin-bottom:8px;">
-              <button type="button" onclick="saveRatedPower(${relay.index})" ${(powerLocked || nightLocked) ? "disabled" : ""}>Save Rated Power</button>
+              <button type="button" onclick="saveRatedPower(${relay.index})" ${(powerLocked || nightLocked) ? "disabled" : ""}>${escapeHtml(t("save_rated_power"))}</button>
             </div>
             <!-- RATED DYNAMIC END -->
-            Last Timer Energy: ${lastWh.toFixed(3)} Wh<br>
-            Total Timer Energy: ${wh.toFixed(3)} Wh
+            ${escapeHtml(t("last_timer_energy"))}: ${lastWh.toFixed(3)} Wh<br>
+            ${escapeHtml(t("total_timer_energy"))}: ${wh.toFixed(3)} Wh
           </li>
         `;
       }).join("");
-      powerList.innerHTML += `<li class="power-item"><strong>Total Timer Energy:</strong> ${totalWh.toFixed(3)} Wh</li>`;
+      powerList.innerHTML += `<li class="power-item"><strong>${escapeHtml(t("total_timer_energy_label"))}</strong> ${totalWh.toFixed(3)} Wh</li>`;
     }
 
     function renderStats() {
       if (!state || !Array.isArray(state.relays)) return;
       statsList.innerHTML = state.relays.map((relay) => `
         <li class="power-item">
-          <strong>${relay.name}</strong><br>
-          Timer Uses: ${relay.timerUses || 0}<br>
-          Total Timer Minutes: ${relay.totalTimerMinutes || 0}
+          <strong>${escapeHtml(translateRelayName(relay.name))}</strong><br>
+          ${escapeHtml(t("timer_uses"))}: ${relay.timerUses || 0}<br>
+          ${escapeHtml(t("total_timer_minutes"))}: ${relay.totalTimerMinutes || 0}
         </li>
       `).join("");
     }
 
     function renderHeader() {
       if (!state) return;
-      modeStatus.textContent = `Mode: ${state.systemMode || "--"}`;
-      dayNightStatus.textContent = `Day/Night: ${state.dayPhase || "--"} | Night Lock: ${state.nightLock ? "ON" : "OFF"}`;
+      modeStatus.textContent = t("mode_status", { value: translateModeValue(state.systemMode || "--") });
+      dayNightStatus.textContent = t("day_night_status", {
+        phase: translateDayPhase(state.dayPhase || "--"),
+        status: t(state.nightLock ? "on" : "off")
+      });
       dayNightStatus.className = `pill ${state.nightLock ? "warn" : "good"}`;
-      clientsStatus.textContent = `Clients: ${state.connectedClients ?? 0}`;
+      clientsStatus.textContent = t("clients_status", { count: state.connectedClients ?? 0 });
       energyTrackingToggle.checked = !!state.energyTrackingEnabled;
       updateNightLockUi();
     }
@@ -1158,36 +1505,55 @@ span{
       renderStats();
     }
 
+    function renderLogList() {
+      logList.innerHTML = logHistory.map((entry) => {
+        const type = LOG_TYPES.has(entry.type) ? entry.type : "TIMER";
+        const badgeKey = {
+          ON: "log_badge_on",
+          OFF: "log_badge_off",
+          TIMER: "log_badge_timer",
+          ERROR: "log_badge_error"
+        }[type] || "log_badge_timer";
+        const relayLabel = Number.isInteger(entry.relay) && entry.relay >= 0
+          ? t("relay_label", { index: entry.relay })
+          : t("system_label");
+        const macLabel = entry.mac || "SYSTEM";
+        const timeLabel = entry.time || formatTimestamp(entry.ts);
+        const eventLabel = entry.event ? ` | ${entry.event}` : "";
+
+        return `
+          <li class="log-item ${type}">
+            <div class="log-top">
+              <span class="log-badge ${type}">${escapeHtml(t(badgeKey))}</span>
+              <span class="log-time">${escapeHtml(timeLabel)}</span>
+            </div>
+            <div class="log-message">${escapeHtml(entry.message || entry.msg || "")}</div>
+            <div class="log-meta">${escapeHtml(`${relayLabel} | MAC ${macLabel}${eventLabel}`)}</div>
+          </li>
+        `;
+      }).join("");
+    }
+
     function addLogEntry(entry, prepend = true) {
       if (!entry) return;
       const type = LOG_TYPES.has(entry.type) ? entry.type : "TIMER";
       const message = entry.message || entry.msg || "";
       if (!message) return;
 
-      const relayLabel = Number.isInteger(entry.relay) && entry.relay >= 0
-        ? `Relay ${entry.relay}`
-        : "System";
-      const macLabel = entry.mac || "SYSTEM";
-      const timeLabel = entry.time || formatTimestamp(entry.ts);
-      const eventLabel = entry.event ? ` | ${entry.event}` : "";
-
-      const li = document.createElement("li");
-      li.className = `log-item ${type}`;
-      li.innerHTML = `
-        <div class="log-top">
-          <span class="log-badge ${type}">${type}</span>
-          <span class="log-time">${escapeHtml(timeLabel)}</span>
-        </div>
-        <div class="log-message">${escapeHtml(message)}</div>
-        <div class="log-meta">${escapeHtml(`${relayLabel} | MAC ${macLabel}${eventLabel}`)}</div>
-      `;
-
-      if (prepend) logList.prepend(li);
-      else logList.append(li);
-
-      while (logList.children.length > 180) {
-        logList.removeChild(logList.lastChild);
+      const normalized = {
+        ...entry,
+        type,
+        message
+      };
+      if (prepend) {
+        logHistory.unshift(normalized);
+      } else {
+        logHistory.push(normalized);
       }
+      while (logHistory.length > 180) {
+        logHistory.pop();
+      }
+      renderLogList();
     }
 
     /* ==========================================
@@ -1561,6 +1927,11 @@ span{
       ThemeManager.toggle();
     });
 
+    // ADDED: language toggle updates text and page direction without reload.
+    languageToggle.addEventListener("click", () => {
+      applyLanguage(currentLanguage === "en" ? "ar" : "en");
+    });
+
     window.addEventListener("online", () => {
       reconnectDelayMs = 1800;
       connectSocket();
@@ -1577,6 +1948,7 @@ span{
        ========================================== */
     window.onload = async () => {
       ThemeManager.init();
+      applyLanguage(currentLanguage);
       setConnectionStatus(false);
       setSyncStatus("Sync: Idle");
 
