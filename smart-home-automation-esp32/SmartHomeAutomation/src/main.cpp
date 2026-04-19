@@ -4,6 +4,8 @@
 #include <esp_wifi.h>
 #include <esp_task_wdt.h>
 #include <LittleFS.h>
+#include <type_traits>
+#include <utility>
 #include "Config.h"
 #include "ControlEngine.h"
 #include "StorageLayer.h"
@@ -29,11 +31,63 @@ enum class WiFiApRecoveryState : uint8_t {
   WAITING_FOR_AP_READY,
 };
 
+// Keep Arduino SoftAP defaults for channel/max clients so only security
+// posture changes here (hidden SSID + client isolation).
+constexpr uint8_t AP_CHANNEL = 1;
+constexpr uint8_t AP_MAX_CONNECTIONS = 4;
+constexpr bool AP_HIDDEN = true;
+
+template <typename T, typename = void>
+struct WifiApConfigHasIsolate : std::false_type {};
+
+template <typename T>
+struct WifiApConfigHasIsolate<T, decltype((void) std::declval<T &>().ap_isolate, void())> : std::true_type {};
+
+template <typename T>
+typename std::enable_if<WifiApConfigHasIsolate<T>::value, bool>::type enableDriverApIsolation(T &apConfig) {
+  apConfig.ap_isolate = 1;
+  return true;
+}
+
+template <typename T>
+typename std::enable_if<!WifiApConfigHasIsolate<T>::value, bool>::type enableDriverApIsolation(T &) {
+  return false;
+}
+
 WiFiApRecoveryState gWiFiApRecoveryState = WiFiApRecoveryState::IDLE;
 uint32_t gLastWiFiHealthCheckMs = 0;
 uint32_t gLastWiFiRecoveryMs = 0;
 uint32_t gWiFiRecoveryStateMs = 0;
 uint8_t gConsecutiveWiFiHealthFailures = 0;
+
+bool applySoftApSecurityConfig() {
+  wifi_config_t wifiConfig{};
+  if (esp_wifi_get_config(WIFI_IF_AP, &wifiConfig) != ESP_OK) {
+    return false;
+  }
+
+  // Keep the SoftAP hidden after boot and AP recovery.
+  // Reassert hidden SSID at driver level so AP recovery keeps the network
+  // hidden even after Wi-Fi stack restarts.
+  wifiConfig.ap.ssid_hidden = 1;
+  const bool isolationSupported = enableDriverApIsolation(wifiConfig.ap);
+  const bool configApplied = esp_wifi_set_config(WIFI_IF_AP, &wifiConfig) == ESP_OK;
+  if (!isolationSupported) {
+    Serial.println("[WiFi] Warning: current framework does not expose driver-level AP isolation.");
+  }
+  return configApplied;
+}
+
+bool startSecureSoftAp() {
+  const bool apOk = WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, AP_HIDDEN, AP_MAX_CONNECTIONS);
+  if (!apOk) {
+    return false;
+  }
+  if (!applySoftApSecurityConfig()) {
+    Serial.println("[WiFi] Warning: failed to apply AP isolation/hidden config.");
+  }
+  return true;
+}
 }  // namespace
 
 String buildSystemEvent(const String &eventName, const String &message, const String &logType) {
@@ -132,7 +186,7 @@ void setupWiFi() {
   WiFi.setAutoReconnect(true);
   WiFi.onEvent(onWiFiEvent);
 
-  const bool apOk = WiFi.softAP(AP_SSID, AP_PASSWORD);
+  const bool apOk = startSecureSoftAp();
   if (apOk) {
     Serial.printf("[WiFi] AP ready SSID=%s IP=%s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
   } else {
@@ -159,7 +213,7 @@ void maintainWiFi() {
       // server stay reachable even after transient Wi-Fi stack faults.
       WiFi.mode(WIFI_AP_STA);
       WiFi.setSleep(false);
-      if (WiFi.softAP(AP_SSID, AP_PASSWORD)) {
+      if (startSecureSoftAp()) {
         pushSystemEvent("wifi.ap_restarted", "SoftAP restarted automatically after a connection failure.", false, true);
       }
     }
@@ -224,7 +278,7 @@ void processWiFiApRecovery() {
     WiFi.persistent(false);
     WiFi.setSleep(false);
     WiFi.setAutoReconnect(true);
-    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    startSecureSoftAp();
     if (strlen(STA_SSID) > 0) {
       WiFi.begin(STA_SSID, STA_PASSWORD);
     }

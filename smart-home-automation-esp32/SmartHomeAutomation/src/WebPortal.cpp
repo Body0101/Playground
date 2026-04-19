@@ -7,11 +7,203 @@
 #include <esp_idf_version.h>
 #include <esp_netif.h>
 #include <esp_wifi.h>
+#include <mbedtls/md.h>
 #include <time.h>
 
 #include "Utils.h"
 
 namespace {
+constexpr size_t MAX_HTTP_BODY_BYTES = 512;
+constexpr size_t MAX_WS_PAYLOAD_BYTES = 384;
+constexpr char FIRMWARE_HMAC_KEY[] = "ESP32_SMARTHOME_FIRMWARE_HMAC_V1";
+constexpr const char *SECURITY_HEADER_SIGNATURE = "X-Firmware-Signature";
+
+bool containsBlockedInputTokens(const String &value) {
+  if (value.indexOf("&&") >= 0 || value.indexOf("||") >= 0 || value.indexOf(';') >= 0 || value.indexOf('`') >= 0) {
+    return true;
+  }
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if (c == '\r' || c == '\n' || c == '\0') {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isStrictUnsignedString(const String &value) {
+  if (value.isEmpty()) {
+    return false;
+  }
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (!isDigit(static_cast<unsigned char>(value[i]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool isAllowedRelayModeValue(const String &value) {
+  return value == "ON" || value == "OFF" || value == "AUTO";
+}
+
+bool isAllowedRelayStateValue(const String &value) {
+  return value == "ON" || value == "OFF";
+}
+
+bool hasOnlyAllowedKeys(const JsonDocument &doc, std::initializer_list<const char *> allowedKeys) {
+  JsonObjectConst object = doc.as<JsonObjectConst>();
+  if (object.isNull()) {
+    return false;
+  }
+
+  for (JsonPairConst pair : object) {
+    const String key = pair.key().c_str();
+    if (containsBlockedInputTokens(key)) {
+      return false;
+    }
+    bool allowed = false;
+    for (const char *allowedKey : allowedKeys) {
+      if (key == allowedKey) {
+        allowed = true;
+        break;
+      }
+    }
+    if (!allowed) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool hasOnlyAllowedArgs(WebServer &server, std::initializer_list<const char *> allowedArgs) {
+  for (uint8_t i = 0; i < server.args(); ++i) {
+    const String name = server.argName(i);
+    if (name == "plain") {
+      continue;
+    }
+    bool allowed = false;
+    for (const char *allowedArg : allowedArgs) {
+      if (name == allowedArg) {
+        allowed = true;
+        break;
+      }
+    }
+    if (!allowed || containsBlockedInputTokens(name) || containsBlockedInputTokens(server.arg(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validatePirMappingsJson(const JsonDocument &doc) {
+  if (!hasOnlyAllowedKeys(doc, {"mappings"})) {
+    return false;
+  }
+  JsonArrayConst mappings = doc["mappings"].as<JsonArrayConst>();
+  if (mappings.isNull() || mappings.size() != PIR_COUNT) {
+    return false;
+  }
+  for (JsonVariantConst itemVar : mappings) {
+    JsonObjectConst item = itemVar.as<JsonObjectConst>();
+    if (item.isNull()) {
+      return false;
+    }
+    for (JsonPairConst pair : item) {
+      const String key = pair.key().c_str();
+      if ((key != "relayA" && key != "relayB") || !pair.value().is<bool>()) {
+        return false;
+      }
+    }
+    if (!item["relayA"].is<bool>() || !item["relayB"].is<bool>()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool isAllowedWsType(const String &type) {
+  return type == "time_sync" || type == "set_manual" || type == "set_timer" || type == "cancel_timer" ||
+         type == "set_energy_tracking" || type == "get_state";
+}
+
+bool isOtaPath(const String &uri) {
+  String lowered = uri;
+  lowered.toLowerCase();
+  return lowered.indexOf("/ota") >= 0 || lowered.indexOf("update") >= 0 || lowered.indexOf("firmware") >= 0;
+}
+
+bool decodeHexNibble(char c, uint8_t *value) {
+  if (!value) {
+    return false;
+  }
+  if (c >= '0' && c <= '9') {
+    *value = static_cast<uint8_t>(c - '0');
+    return true;
+  }
+  if (c >= 'a' && c <= 'f') {
+    *value = static_cast<uint8_t>(10 + (c - 'a'));
+    return true;
+  }
+  if (c >= 'A' && c <= 'F') {
+    *value = static_cast<uint8_t>(10 + (c - 'A'));
+    return true;
+  }
+  return false;
+}
+
+bool decodeHexString(const String &hex, uint8_t *out, size_t outLen) {
+  if (!out || hex.length() != outLen * 2) {
+    return false;
+  }
+  for (size_t i = 0; i < outLen; ++i) {
+    uint8_t high = 0;
+    uint8_t low = 0;
+    if (!decodeHexNibble(hex[i * 2], &high) || !decodeHexNibble(hex[i * 2 + 1], &low)) {
+      return false;
+    }
+    out[i] = static_cast<uint8_t>((high << 4) | low);
+  }
+  return true;
+}
+
+bool constantTimeEquals(const uint8_t *lhs, const uint8_t *rhs, size_t len) {
+  if (!lhs || !rhs) {
+    return false;
+  }
+  uint8_t diff = 0;
+  for (size_t i = 0; i < len; ++i) {
+    diff |= lhs[i] ^ rhs[i];
+  }
+  return diff == 0;
+}
+
+bool verifyFirmwareSignature(const uint8_t *imageData, size_t imageSize, const String &signatureHex) {
+  constexpr size_t HMAC_SIZE = 32;
+  if (!imageData || imageSize == 0 || containsBlockedInputTokens(signatureHex)) {
+    return false;
+  }
+
+  uint8_t expected[HMAC_SIZE];
+  if (!decodeHexString(signatureHex, expected, sizeof(expected))) {
+    return false;
+  }
+
+  const mbedtls_md_info_t *mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (!mdInfo) {
+    return false;
+  }
+
+  uint8_t computed[HMAC_SIZE];
+  const int result = mbedtls_md_hmac(mdInfo,
+                                     reinterpret_cast<const unsigned char *>(FIRMWARE_HMAC_KEY),
+                                     strlen(FIRMWARE_HMAC_KEY),
+                                     reinterpret_cast<const unsigned char *>(imageData),
+                                     imageSize,
+                                     computed);
+  return result == 0 && constantTimeEquals(expected, computed, sizeof(computed));
+}
+
 bool eventNeedsSnapshot(const String &jsonLine) {
   JsonDocument doc;
   if (deserializeJson(doc, jsonLine)) {
@@ -78,6 +270,8 @@ void WebPortal::begin(ControlEngine *engine, StorageLayer *storage, TimeKeeper *
   lastClientRefreshMs_ = 0;
   stateBroadcastPending_ = false;
 
+  const char *collectedHeaders[] = {SECURITY_HEADER_SIGNATURE};
+  server_.collectHeaders(collectedHeaders, 1);
   setupRoutes();
   server_.begin();
 
@@ -175,6 +369,24 @@ void WebPortal::setupRoutes() {
   server_.on("/ncsi.txt", HTTP_ANY, captiveProbeHandler);
   // CAPTIVE PORTAL END
 
+  auto otaDisabledHandler = [this]() {
+    // OTA remains disabled. Any future update path must verify the HMAC-SHA256
+    // signature before touching Update APIs or accepting firmware bytes.
+    if (server_.hasHeader(SECURITY_HEADER_SIGNATURE)) {
+      const String body = server_.arg("plain");
+      if (!body.isEmpty() && body.length() <= MAX_HTTP_BODY_BYTES) {
+        (void)verifyFirmwareSignature(reinterpret_cast<const uint8_t *>(body.c_str()),
+                                      body.length(),
+                                      server_.header(SECURITY_HEADER_SIGNATURE));
+      }
+    }
+    server_.send(403, "application/json", "{\"ok\":false,\"msg\":\"OTA disabled\"}");
+  };
+  server_.on("/update", HTTP_ANY, otaDisabledHandler);
+  server_.on("/ota", HTTP_ANY, otaDisabledHandler);
+  server_.on("/api/update", HTTP_ANY, otaDisabledHandler);
+  server_.on("/firmware", HTTP_ANY, otaDisabledHandler);
+
   server_.on("/", HTTP_GET, [this]() {
     // If a phone or desktop browser requested some external host that DNS
     // hijacked back to the ESP32, bounce it to the actual SoftAP URL.
@@ -191,14 +403,29 @@ void WebPortal::setupRoutes() {
     file.close();
   });
 
-  server_.on("/api/state", HTTP_GET, [this]() { server_.send(200, "application/json", engine_->buildStateJson()); });
+  server_.on("/api/state", HTTP_GET, [this]() {
+    if (!hasOnlyAllowedArgs(server_, {})) {
+      server_.send(400, "application/json", "{\"ok\":false,\"msg\":\"Invalid query\"}");
+      return;
+    }
+    server_.send(200, "application/json", engine_->buildStateJson());
+  });
 
   server_.on("/api/logs", HTTP_GET, [this]() {
+    if (!hasOnlyAllowedArgs(server_, {"limit"}) ||
+        (server_.hasArg("limit") && !isStrictUnsignedString(server_.arg("limit")))) {
+      server_.send(400, "application/json", "{\"ok\":false,\"msg\":\"Invalid query\"}");
+      return;
+    }
     const uint16_t limit = static_cast<uint16_t>(server_.hasArg("limit") ? server_.arg("limit").toInt() : 80);
     server_.send(200, "application/json", storage_->readRecentLogsJson(limit));
   });
 
   server_.on("/api/time", HTTP_GET, [this]() {
+    if (!hasOnlyAllowedArgs(server_, {})) {
+      server_.send(400, "application/json", "{\"ok\":false,\"msg\":\"Invalid query\"}");
+      return;
+    }
     JsonDocument doc;
     const uint64_t apiEpoch = timeKeeper_->nowUserEpoch() > 0 ? timeKeeper_->nowUserEpoch() : timeKeeper_->nowEpoch();
     doc["epoch"] = apiEpoch;
@@ -214,9 +441,17 @@ void WebPortal::setupRoutes() {
   server_.on("/api/pirMapping", HTTP_POST, [this]() {
     JsonDocument response;
     response["ok"] = false;
+    const String body = server_.arg("plain");
+    if (body.isEmpty() || body.length() > MAX_HTTP_BODY_BYTES || containsBlockedInputTokens(body)) {
+      response["msg"] = "Invalid JSON body.";
+      String payload;
+      serializeJson(response, payload);
+      server_.send(400, "application/json", payload);
+      return;
+    }
 
     JsonDocument doc;
-    if (deserializeJson(doc, server_.arg("plain"))) {
+    if (deserializeJson(doc, body) || !validatePirMappingsJson(doc)) {
       response["msg"] = "Invalid JSON body.";
       String payload;
       serializeJson(response, payload);
@@ -255,6 +490,10 @@ void WebPortal::setupRoutes() {
 
   // POWER RESET START
   server_.on("/api/resetConsumption", HTTP_POST, [this]() {
+    if (!hasOnlyAllowedArgs(server_, {}) || !server_.arg("plain").isEmpty()) {
+      server_.send(400, "application/json", "{\"ok\":false,\"msg\":\"Invalid request\"}");
+      return;
+    }
     String errorText;
     const bool ok = engine_->resetConsumption(&errorText);
 
@@ -271,9 +510,17 @@ void WebPortal::setupRoutes() {
   server_.on("/api/ratedPower", HTTP_POST, [this]() {
     JsonDocument response;
     response["ok"] = false;
+    const String body = server_.arg("plain");
+    if (body.isEmpty() || body.length() > MAX_HTTP_BODY_BYTES || containsBlockedInputTokens(body)) {
+      response["msg"] = "Invalid JSON body.";
+      String payload;
+      serializeJson(response, payload);
+      server_.send(400, "application/json", payload);
+      return;
+    }
 
     JsonDocument doc;
-    if (deserializeJson(doc, server_.arg("plain"))) {
+    if (deserializeJson(doc, body) || !hasOnlyAllowedKeys(doc, {"channel", "powerW"})) {
       response["msg"] = "Invalid JSON body.";
       String payload;
       serializeJson(response, payload);
@@ -295,7 +542,20 @@ void WebPortal::setupRoutes() {
   // RATED DYNAMIC END
 
   auto setTimeHandler = [this]() {
-    const String payload = handleSetTime(server_.arg("plain"));
+    const String body = server_.arg("plain");
+    if (body.isEmpty() || body.length() > MAX_HTTP_BODY_BYTES || containsBlockedInputTokens(body)) {
+      server_.send(400, "application/json", "{\"type\":\"set_time_ack\",\"ok\":false,\"status\":\"ERROR\",\"msg\":\"Invalid JSON body.\"}");
+      return;
+    }
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body) ||
+        !hasOnlyAllowedKeys(doc, {"epoch", "year", "month", "day", "hours", "minutes", "seconds", "tzOffsetMinutes"})) {
+      server_.send(400, "application/json", "{\"type\":\"set_time_ack\",\"ok\":false,\"status\":\"ERROR\",\"msg\":\"Invalid JSON body.\"}");
+      return;
+    }
+
+    const String payload = handleSetTime(body);
     const int status = payload.indexOf("\"ok\":true") >= 0 ? 200 : 400;
     server_.send(status, "application/json", payload);
   };
@@ -303,6 +563,10 @@ void WebPortal::setupRoutes() {
   server_.on("/api/setTime", HTTP_POST, setTimeHandler);
 
   server_.onNotFound([this]() {
+    if (isOtaPath(server_.uri())) {
+      server_.send(403, "application/json", "{\"ok\":false,\"msg\":\"OTA disabled\"}");
+      return;
+    }
     if (server_.uri() == "/index.html") {
       File file = LittleFS.open("/index.html", FILE_READ);
       if (file) {
@@ -497,6 +761,12 @@ bool WebPortal::enqueueInboundCommand(uint8_t clientId, const String &payload) {
   if (!inboundQueue_) {
     return false;
   }
+  if (payload.isEmpty() || payload.length() > MAX_WS_PAYLOAD_BYTES || containsBlockedInputTokens(payload)) {
+    if (socket_.clientIsConnected(clientId)) {
+      sendCommandAck(clientId, false, "Invalid command payload.");
+    }
+    return false;
+  }
 
   // get_state can be spammed by reconnects and UI refreshes. Coalesce it so
   // status traffic does not starve higher-value control commands.
@@ -535,7 +805,15 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   }
 
   const String type = doc["type"] | "";
+  if (!isAllowedWsType(type)) {
+    sendCommandAck(clientId, false, "Unsupported command type.");
+    return;
+  }
   if (type == "time_sync") {
+    if (!hasOnlyAllowedKeys(doc, {"type", "epoch", "year", "month", "day", "hours", "minutes", "seconds", "tzOffsetMinutes"})) {
+      sendCommandAck(clientId, false, "Invalid time_sync payload.");
+      return;
+    }
     const bool ok = applyTimeSyncFromJson(doc, true);
     if (!ok) {
       sendCommandAck(clientId, false, "Invalid time_sync payload.");
@@ -547,8 +825,18 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   }
 
   if (type == "set_manual") {
+    if (!hasOnlyAllowedKeys(doc, {"type", "channel", "mode"})) {
+      sendCommandAck(clientId, false, "Invalid manual command.");
+      return;
+    }
+    const String modeText = doc["mode"] | "";
+    const int channelValue = doc["channel"] | -1;
+    if (channelValue < 0 || !isAllowedRelayModeValue(modeText)) {
+      sendCommandAck(clientId, false, "Invalid manual command.");
+      return;
+    }
     const size_t channel = static_cast<size_t>(doc["channel"] | 99);
-    const RelayMode mode = relayModeFromText(doc["mode"] | "AUTO");
+    const RelayMode mode = relayModeFromText(modeText);
     if (shouldRateLimitRelayCommand(channel)) {
       sendCommandAck(clientId, false, "Relay command rate limited, please retry.");
       return;
@@ -573,6 +861,18 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   }
 
   if (type == "set_timer") {
+    if (!hasOnlyAllowedKeys(doc,
+                            {"type", "channel", "durationMinutes", "durationSec", "target", "epoch", "year", "month",
+                             "day", "hours", "minutes", "seconds", "tzOffsetMinutes"})) {
+      sendCommandAck(clientId, false, "Invalid timer request.");
+      return;
+    }
+    const String targetText = doc["target"] | "";
+    const int channelValue = doc["channel"] | -1;
+    if (channelValue < 0 || !isAllowedRelayStateValue(targetText)) {
+      sendCommandAck(clientId, false, "Invalid timer request.");
+      return;
+    }
     // Timer start should refresh the controller clock from the latest device time when present,
     // so persisted start/end timestamps stay anchored to the user device instead of stale sync state.
     if (!applyTimeSyncFromJson(doc, false)) {
@@ -607,6 +907,10 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   }
 
   if (type == "cancel_timer") {
+    if (!hasOnlyAllowedKeys(doc, {"type", "channel"}) || (doc["channel"] | -1) < 0) {
+      sendCommandAck(clientId, false, "Invalid timer request.");
+      return;
+    }
     const size_t channel = static_cast<size_t>(doc["channel"] | 99);
     const bool ok = engine_->cancelTimer(channel);
     sendCommandAck(clientId, ok, ok ? "Timer canceled." : "No active timer on this relay.");
@@ -617,6 +921,10 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   }
 
   if (type == "set_energy_tracking") {
+    if (!hasOnlyAllowedKeys(doc, {"type", "enabled"}) || !doc["enabled"].is<bool>()) {
+      sendCommandAck(clientId, false, "Invalid energy tracking request.");
+      return;
+    }
     const bool enabled = doc["enabled"] | false;
     String errorText;
     const bool ok = engine_->setEnergyTrackingEnabled(enabled, &errorText);
@@ -628,11 +936,13 @@ void WebPortal::handleClientMessage(uint8_t clientId, const String &payload) {
   }
 
   if (type == "get_state") {
+    if (!hasOnlyAllowedKeys(doc, {"type"})) {
+      sendCommandAck(clientId, false, "Invalid state request.");
+      return;
+    }
     pushStateSnapshot(clientId);
     return;
   }
-
-  sendCommandAck(clientId, false, "Unsupported command type.");
 }
 
 void WebPortal::sendToClient(uint8_t clientId, const String &json) {
